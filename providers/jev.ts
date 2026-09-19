@@ -87,6 +87,20 @@ function isProbability(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
+/**
+ * A choice's confidence is a probability in [0,1]. Missing counts as 0 (which the
+ * floors in applyPolicy turn into ask_human); a present-but-garbage value is a
+ * malformed response and throws, so the router degrades to the heuristic instead
+ * of trusting an out-of-range number.
+ */
+function readChoiceConfidence(answer: JevChoiceAnswer, id: string): number {
+  if (answer.confidence === undefined) return 0;
+  if (!isProbability(answer.confidence)) {
+    throw new Error(`unusable ${id} confidence: ${JSON.stringify(answer.confidence)}`);
+  }
+  return answer.confidence;
+}
+
 function readNoulAnswer(answers: Record<string, unknown>, id: string): number {
   const answer = answers[id] as JevNoulAnswer | undefined;
   if (!answer || answer.type !== "noul" || !isProbability(answer.noul)) {
@@ -128,7 +142,7 @@ export function mapJevResponse(payload: JevResponse, latencyMs: number): Provide
   // axes. See the file-header comment: complexity confidence is low by nature,
   // and using it as a veto would over-route to ask_human. Missing confidence
   // still counts as zero, which drives the floors in applyPolicy toward asking.
-  const confidence = kind.confidence ?? 0;
+  const confidence = readChoiceConfidence(kind, TASK_KIND_QUESTION);
 
   const decision: Decision = {
     task_kind: kind.choice,
@@ -141,12 +155,14 @@ export function mapJevResponse(payload: JevResponse, latencyMs: number): Provide
   };
 
   const tokens = payload.usage?.input_tokens;
+  // Complexity confidence is display-only: show it when valid, never throw on it.
+  const complexityConfidence = complexity.confidence;
   const detail = [
     `jev ${payload.model ?? "unknown"}`,
     `${latencyMs}ms`,
     tokens === undefined ? undefined : `${tokens}in`,
     `kind ${kind.choice}(${confidence.toFixed(2)})`,
-    `complexity ${complexity.choice}(${(complexity.confidence ?? 0).toFixed(2)})`,
+    `complexity ${complexity.choice}${isProbability(complexityConfidence) ? `(${complexityConfidence.toFixed(2)})` : ""}`,
     `repo_map ${decision.needs_repo_map ? "yes" : "no"}`,
     `human ${decision.needs_human ? "yes" : "no"}`,
   ]

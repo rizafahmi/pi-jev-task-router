@@ -99,3 +99,24 @@ test("a missing task_kind confidence becomes 0 rather than throwing", () => {
   // applyPolicy() turns confidence 0 into ask_human; the mapper must not guess.
   assert.equal(mapJevResponse(payload, 1).decision.confidence, 0);
 });
+
+test("a task_kind confidence outside [0, 1] is rejected", () => {
+  for (const confidence of [1.5, -0.1, Number.NaN, Number.POSITIVE_INFINITY, "0.9"]) {
+    assert.throws(
+      () => mapJevResponse(response({ task_kind: { type: "choice", choice: "bugfix", confidence } }), 1),
+      /unusable task_kind confidence/,
+      `expected confidence ${String(confidence)} to be rejected`,
+    );
+  }
+});
+
+test("a complexity confidence outside [0, 1] is dropped from the detail, not thrown", () => {
+  const { decision, detail } = mapJevResponse(
+    response({ complexity: { type: "choice", choice: "M", confidence: 42 } }),
+    1,
+  );
+
+  // Complexity confidence is display-only; garbage there must not discard a good kind.
+  assert.equal(decision.complexity, "M");
+  assert.doesNotMatch(detail, /42/);
+});
