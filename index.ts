@@ -266,7 +266,11 @@ export default function taskRouter(pi: ExtensionAPI) {
 
     const prompt = event.prompt ?? "";
 
-    // /model, /reload, /cost, templates and skills own their own behaviour.
+    // Built-in slash commands are dispatched before this hook, and registered
+    // extension/prompt commands are matched here too, so neither is ever routed.
+    // Skill and prompt-template commands (/skill:..., /template ...) are expanded
+    // by pi before before_agent_start fires, so they are out of scope for this
+    // guard — only a literal slash-looking prompt can match it.
     if (isCommandLike(pi, prompt)) return;
 
     if (selection.kind === "misconfigured") {
