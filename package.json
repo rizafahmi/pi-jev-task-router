@@ -1,0 +1,37 @@
+{
+  "name": "pi-jev-task-router",
+  "version": "0.1.0",
+  "description": "Per-prompt model routing for the Pi coding agent: classify each prompt with Jev (TypeSafe System One), map it to a model tier, and switch models before the turn runs.",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "llm-routing",
+    "model-routing",
+    "jev"
+  ],
+  "license": "MIT",
+  "author": "Riza Fahmi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rizafahmi/pi-jev-task-router.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.85.1",
+    "@types/node": "^26.6.2",
+    "typescript": "^7.0.2"
+  }
+}
