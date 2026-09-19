@@ -109,16 +109,28 @@ const CONFIG = {
   cacheSize: 100,
 };
 
-interface Selection {
-  provider: ClassifierProvider;
-  /** Human-readable description of what is active, shown by /router-config. */
-  label: string;
-  configurationError?: string;
+/**
+ * What the router will classify with. A misconfiguration is its own state rather
+ * than a provider plus a flag: there is no classifier to hand out in that case,
+ * because the heuristic would only be pretending to be Jev. Every consumer has to
+ * match on the state before it can reach a provider.
+ */
+type Selection =
+  | { kind: "ready"; provider: ClassifierProvider; label: string }
+  | { kind: "misconfigured"; reason: string };
+
+/** One line describing what is active, for session_start, /router-config and /task-router. */
+function selectionLabel(selection: Selection): string {
+  return selection.kind === "ready" ? selection.label : `configuration error (${selection.reason})`;
 }
 
 function selectProvider(): Selection {
   if (CONFIG.providerMode === "fake") {
-    return { provider: fakeProvider("TASK_ROUTER_PROVIDER=fake"), label: "heuristic (forced by TASK_ROUTER_PROVIDER=fake)" };
+    return {
+      kind: "ready",
+      provider: fakeProvider("TASK_ROUTER_PROVIDER=fake"),
+      label: "heuristic (forced by TASK_ROUTER_PROVIDER=fake)",
+    };
   }
 
   if (!CONFIG.apiKey) {
@@ -126,17 +138,12 @@ function selectProvider(): Selection {
       CONFIG.providerMode === "jev"
         ? "TASK_ROUTER_PROVIDER=jev but TYPESAFE_API_KEY is unset"
         : "TYPESAFE_API_KEY is unset";
-    if (CONFIG.providerMode === "jev") {
-      return {
-        provider: fakeProvider(why),
-        label: `configuration error (${why})`,
-        configurationError: why,
-      };
-    }
-    return { provider: fakeProvider(why), label: `heuristic (${why})` };
+    if (CONFIG.providerMode === "jev") return { kind: "misconfigured", reason: why };
+    return { kind: "ready", provider: fakeProvider(why), label: `heuristic (${why})` };
   }
 
   return {
+    kind: "ready",
     provider: createJevProvider({
       apiKey: CONFIG.apiKey,
       baseUrl: CONFIG.baseUrl,
@@ -242,9 +249,15 @@ export default function taskRouter(pi: ExtensionAPI) {
   let enabled = !existsSync(DISABLED_MARKER);
   let last: LastRoute | undefined;
   let alwaysAllow = false;
+  // A misconfiguration is reported once per session instance; after that
+  // /task-router, /router-config and /router-check still say what is wrong.
+  let configurationReported = false;
 
   pi.on("session_start", async (_event, ctx) => {
-    ctx.ui.notify(`task-router: ${enabled ? selection.label : "disabled (use /task-router on to enable)"}`, "info");
+    ctx.ui.notify(
+      `task-router: ${enabled ? selectionLabel(selection) : "disabled (use /task-router on to enable)"}`,
+      "info",
+    );
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
@@ -256,8 +269,11 @@ export default function taskRouter(pi: ExtensionAPI) {
     // /model, /reload, /cost, templates and skills own their own behaviour.
     if (isCommandLike(pi, prompt)) return;
 
-    if (selection.configurationError) {
-      ctx.ui.notify(`router: ${selection.configurationError}`, "error");
+    if (selection.kind === "misconfigured") {
+      if (!configurationReported) {
+        configurationReported = true;
+        ctx.ui.notify(`router: ${selection.reason}`, "error");
+      }
       return;
     }
 
@@ -376,7 +392,7 @@ export default function taskRouter(pi: ExtensionAPI) {
   pi.registerCommand("router-config", {
     description: "Show the active classifier, credentials and thresholds",
     handler: async (_args, ctx) => {
-      ctx.ui.notify(`router: classifier = ${selection.label}`, "info");
+      ctx.ui.notify(`router: classifier = ${selectionLabel(selection)}`, "info");
       ctx.ui.notify(
         `  TYPESAFE_API_KEY ${maskSecret(CONFIG.apiKey)} · base ${CONFIG.baseUrl} · model ${CONFIG.model}`,
         "info",
@@ -428,7 +444,7 @@ export default function taskRouter(pi: ExtensionAPI) {
 
       if (arg === "") {
         ctx.ui.notify(
-          `task-router is ${enabled ? `enabled (${selection.label})` : "disabled - /task-router on to enable"}`,
+          `task-router is ${enabled ? `enabled (${selectionLabel(selection)})` : "disabled - /task-router on to enable"}`,
           "info",
         );
         return;
@@ -439,17 +455,18 @@ export default function taskRouter(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("router-check", {
-    description: "Run fixtures.jsonl through classify + applyPolicy; add --jev to test the live API",
+    description: "Run fixtures.jsonl through classify + applyPolicy; --jev for the live API, --fake to force the heuristic",
     handler: async (args, ctx) => {
       const useJev = /--jev\b/.test(args);
+      const useFake = /--fake\b/.test(args);
 
-      let provider: ClassifierProvider = selection.provider;
-      let label = selection.label;
-
-      if (selection.configurationError && !useJev) {
-        ctx.ui.notify(`router-check: ${selection.configurationError}`, "error");
+      if (useJev && useFake) {
+        ctx.ui.notify("router-check: --jev and --fake are mutually exclusive", "warning");
         return;
       }
+
+      let provider: ClassifierProvider;
+      let label: string;
 
       if (useJev) {
         if (!CONFIG.apiKey) {
@@ -465,6 +482,17 @@ export default function taskRouter(pi: ExtensionAPI) {
           cacheSize: 0,
         });
         label = `jev ${CONFIG.model}`;
+      } else if (useFake) {
+        // The heuristic fixtures stay reachable when the configured classifier is
+        // unusable, which is exactly when running them is worth something.
+        provider = fakeProvider("forced by --fake");
+        label = "heuristic (forced by --fake)";
+      } else if (selection.kind === "misconfigured") {
+        ctx.ui.notify(`router-check: ${selection.reason} (or --fake for the heuristic fixtures)`, "error");
+        return;
+      } else {
+        provider = selection.provider;
+        label = selection.label;
       }
 
       let fixtures: Fixture[];

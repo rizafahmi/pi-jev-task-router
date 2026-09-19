@@ -209,6 +209,11 @@ Offline, no key, no LLM cost — runs the heuristic + policy over the fixtures:
 /router-check
 ```
 
+`--fake` forces that same run when the configured classifier cannot start (e.g.
+`TASK_ROUTER_PROVIDER=jev` with no `TYPESAFE_API_KEY`), which is the one case
+where `/router-check` otherwise refuses to run. `/router-check --jev --fake` is
+rejected.
+
 Live Jev, real API — asserts the **tier** per fixture and lists kind/complexity
 disagreements as notes:
 
