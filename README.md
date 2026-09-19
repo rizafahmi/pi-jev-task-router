@@ -6,13 +6,15 @@
 
 Classify the prompt → pick a model tier → `pi.setModel()` → tell you where it landed.
 
+Package `pi-jev-task-router` — `pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.0`
+
 [![Pi extension](https://img.shields.io/badge/Pi-extension-6E56CF?style=flat-square)](https://github.com/earendil-works/pi-coding-agent)
 ![routing pattern B](https://img.shields.io/badge/routing-pattern_B-0EA5E9?style=flat-square)
 [![classifier Jev](https://img.shields.io/badge/classifier-Jev_System_One-8B5CF6?style=flat-square)](https://docs.typesafe.ai/api)
 ![fallback keyword heuristic](https://img.shields.io/badge/fallback-keyword_heuristic-64748B?style=flat-square)
 ![runtime deps 0](https://img.shields.io/badge/runtime_deps-0-brightgreen?style=flat-square)
-![tests 15 passing](https://img.shields.io/badge/tests-15_passing-brightgreen?style=flat-square)
-![Node >= 24](https://img.shields.io/badge/Node-%E2%89%A5%2024-339933?style=flat-square&logo=nodedotjs&logoColor=white)
+[![CI](https://github.com/rizafahmi/pi-jev-task-router/actions/workflows/ci.yml/badge.svg)](https://github.com/rizafahmi/pi-jev-task-router/actions/workflows/ci.yml)
+![Node >= 22.19](https://img.shields.io/badge/Node-%E2%89%A5%2022.19-339933?style=flat-square&logo=nodedotjs&logoColor=white)
 ![pi-coding-agent 0.85.1](https://img.shields.io/badge/pi--coding--agent-0.85.1-blue?style=flat-square)
 [![license MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
@@ -35,7 +37,7 @@ Jev call fails, it degrades to a keyword heuristic and says so.
 - [🚀 Quick start](#-quick-start)
 - [📦 Install](#-install)
 - [🔧 Configuration](#-configuration)
-  - [API notes for this machine](#api-notes-for-this-machine)
+  - [Tier models](#tier-models)
 - [🎛 Slash commands](#-slash-commands)
 - [🧠 The classifier: Jev](#-the-classifier-jev)
   - [Why `Decision.confidence` is only `task_kind`](#why-decisionconfidence-is-only-task_kind)
@@ -53,6 +55,7 @@ Jev call fails, it degrades to a keyword heuristic and says so.
 - [🚫 Deliberately not here](#-deliberately-not-here)
 - [📁 Layout](#-layout)
 - [🧾 Requirements](#-requirements)
+- [🤝 Contributing](CONTRIBUTING.md)
 - [📄 License](#-license)
 
 ---
@@ -65,11 +68,11 @@ Jev call fails, it degrades to a keyword heuristic and says so.
 | 🪝 **Hook** | `before_agent_start` — fires after prompt/template expansion, before the agent loop reads the model |
 | 🧠 **Classifier** | Jev / System One (`POST /v1/systemone`, four questions in one call) |
 | 🪫 **Fallback** | Keyword heuristic — offline path *and* the degraded path, always announced |
-| 📐 **Policy** | `policy.ts` owns the kind → tier table, thresholds, and the only place a model id appears |
-| 💸 **Rotation** | Two models: `deepseek-v4-flash` (fast_cheap) and `deepseek-v4-pro` (balanced + frontier) |
+| 📐 **Policy** | `policy.ts` owns the kind → tier table, the thresholds, and the default model ids (overridable with `TASK_ROUTER_TIERS`) |
+| 💸 **Rotation** | Default two-model rotation: `deepseek-v4-flash` (fast_cheap) and `deepseek-v4-pro` (balanced + frontier) — override with `TASK_ROUTER_TIERS` |
 | 🛑 **Gate** | TUI dialog before any switch to a *more expensive* model |
 | 🔌 **Toggle** | `/task-router on \| off`, persisted to a marker file, survives `/reload` |
-| 🧪 **Tests** | `node --test` · 15 tests · no key, no network, no dependencies |
+| 🧪 **Tests** | `node --test` · 23 tests · no key, no network, and no install needed to run them |
 
 ---
 
@@ -79,7 +82,9 @@ Jev call fails, it degrades to a keyword heuristic and says so.
 flowchart TD
     A[User prompt] --> B{Disabled, or slash command?}
     B -- yes --> Z[Leave the model alone]
-    B -- no --> C[Classify: Jev, else the heuristic]
+    B -- no --> B2{Classifier and tier table usable?}
+    B2 -- "no: misconfigured" --> Z2[Error notify once, no setModel]
+    B2 -- yes --> C[Classify: Jev, else the heuristic]
     C --> D["Decision: task_kind · complexity · confidence · nouls"]
     D --> E[BASE_TIER maps task_kind to a tier]
     E --> F{security?}
@@ -103,52 +108,105 @@ flowchart TD
     R --> S[notify where it landed]
 ```
 
-Every arrow above is a function in `policy.ts` — see [Policy](#-policy) for the exact ordering rules.
+The policy arrows above are functions in `policy.ts` — see [Policy](#-policy) for the exact
+ordering rules. The guards, the confirmation gate and `setModel` live in `index.ts`.
 
 ---
 
 ## 🚀 Quick start
 
-Already have the directory in place? Three commands and you are routing:
-
-```fish
-set -Ux TYPESAFE_API_KEY sk-...   # Fish. Or: export TYPESAFE_API_KEY=sk-...
+```sh
+pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.0   # 1. install
+export TYPESAFE_API_KEY=sk-...                                  # 2. optional, enables Jev
 ```
 
 ```text
-/reload          # or just start Pi — the extension is auto-discovered
-/router-config    # confirm the classifier, key, and resolved tiers
+/reload           # or just start Pi — installed packages load on startup
+/router-config    # confirm the classifier, the key, and what each tier resolves to
 ```
 
-Then send a prompt and watch the footer model move. No key? It still works — the heuristic picks
-up and says so in the notify.
+Then send a prompt and watch the footer model move. No API key? The keyword heuristic routes
+instead and says so in the notify. No model switch at all? Read this box first.
+
+> ### ⚠️ First run: the shipped tier models are one machine's catalogue
+>
+> The default tier → model allowlist is `deepseek/deepseek-v4-flash` (fast_cheap) and
+> `deepseek/deepseek-v4-pro` (balanced, frontier). Those ids exist on the machine this was
+> built on; on yours they may not. When a tier cannot resolve, the router does **not** switch
+> and notifies `router: no usable model for <tier> - check the tier table ...` on every prompt.
+>
+> `/router-config` shows the answer — the line to look for is
+> `resolved now: fast_cheap=… · balanced=… · frontier=…`. `UNRESOLVED` means that tier has no
+> model in your catalogue with auth configured. Fix it without touching the code:
+>
+> ```sh
+> export TASK_ROUTER_TIERS='{"fast_cheap":["provider/small-model"],"balanced":["provider/mid-model"],"frontier":["provider/big-model"]}'
+> ```
+>
+> Tiers you omit keep their default. Ids are never invented: an entry that is not in
+> `pi --list-models`, or has no auth, is skipped. Full rules in [Tier models](#tier-models).
 
 ---
 
 ## 📦 Install
 
-1. The directory already lives at `~/.pi/agent/extensions/task-router/`.
-   Pi auto-discovers `~/.pi/agent/extensions/*/index.ts`, so no settings change is
-   needed. Project-local `.pi/extensions/task-router/index.ts` also works and loads
-   only after the project is trusted.
-2. **Nothing to install:** the extension has no runtime dependencies. Its imports are
-   `node:fs`, `node:path`, `node:url` and type-only imports from
-   `@earendil-works/pi-coding-agent` (erased by jiti at load time). It talks to
-   TypeSafe with plain `fetch`, not the SDK.
-3. Enable Jev by exporting `TYPESAFE_API_KEY` where Pi is launched. You run Fish:
+### As a Pi package (recommended)
 
-   ```fish
-   set -Ux TYPESAFE_API_KEY sk-...   # universal, survives restarts
-   ```
+```sh
+pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.0
+```
 
-   Without it the router runs on the heuristic. `TASK_ROUTER_PROVIDER` (see below)
-   controls the choice explicitly.
-4. Load it: next start (auto-discovered), `/reload` (current session), or
-   `pi -e ~/.pi/agent/extensions/task-router/index.ts` (throwaway).
-   Keep other extensions out of the way with `--no-extensions`.
+`pi install` clones the package to
+`~/.pi/agent/git/github.com/rizafahmi/pi-jev-task-router`, records it in
+`~/.pi/agent/settings.json`, and loads it on every start. `pi list` shows installed packages;
+`pi remove git:github.com/rizafahmi/pi-jev-task-router` removes it. Drop the `@ref` to follow
+the default branch, or add `-l` to install project-locally into `.pi/settings.json`.
 
-To disable: remove or rename the directory (or start with `--no-extensions`), then
-`/reload`.
+### As a plain clone
+
+Pi also auto-discovers `~/.pi/agent/extensions/*/index.ts`, so a checkout works with no
+manifest at all:
+
+```sh
+git clone https://github.com/rizafahmi/pi-jev-task-router ~/.pi/agent/extensions/pi-jev-task-router
+```
+
+Project-local `.pi/extensions/pi-jev-task-router/index.ts` works too and loads only after the
+project is trusted.
+
+### Nothing else to install
+
+The extension has **no runtime dependencies**. Its imports are `node:fs`, `node:os`,
+`node:path`, `node:url` and type-only imports from `@earendil-works/pi-coding-agent` (erased at
+load time). It talks to TypeSafe with plain `fetch`, not the SDK. Whichever install route you
+use, load it with a restart, `/reload`, or a throwaway run:
+
+```sh
+pi -e git:github.com/rizafahmi/pi-jev-task-router          # try the package, do not install
+pi -e ~/.pi/agent/extensions/pi-jev-task-router/index.ts  # run a checkout directly
+```
+
+### Enable the classifier (optional)
+
+Export `TYPESAFE_API_KEY` where Pi is launched. Without it the router runs on the keyword
+heuristic and says so; `TASK_ROUTER_PROVIDER` (below) controls the choice explicitly.
+
+```sh
+export TYPESAFE_API_KEY=sk-...     # sh, bash, zsh
+```
+
+```fish
+set -Ux TYPESAFE_API_KEY sk-...    # fish, universal: survives restarts
+```
+
+Each *route* now leaves a footer marker and a notify. Keep other extensions out of the way
+with `--no-extensions`.
+
+### Disable / uninstall
+
+`/task-router off` stops routing but keeps the extension loaded (see
+[On/off toggle](#-onoff-toggle)); `pi remove git:github.com/rizafahmi/pi-jev-task-router`
+uninstalls it.
 
 ---
 
@@ -159,32 +217,59 @@ To disable: remove or rename the directory (or start with `--no-extensions`), th
 | `TYPESAFE_API_KEY` | unset | enables Jev; unset → heuristic only |
 | `TYPESAFE_BASE_URL` | `https://api.typesafe.ai` | API root |
 | `TASK_ROUTER_PROVIDER` | `auto` | `auto` = Jev if key set; `jev` = Jev, error if no key; `fake` = heuristic |
-| `TASK_ROUTER_JEV_MODEL` | `jev-latest` | alias, or pin `jev-1.13.0` |
+| `TASK_ROUTER_JEV_MODEL` | `jev-1.13.0` | pinned; set `jev-latest` to follow the alias |
 | `TASK_ROUTER_TIMEOUT_MS` | `4000` | whole call budget, retries included |
 | `TASK_ROUTER_MAX_CHARS` | `4000` | prompt characters sent as `state` |
+| `TASK_ROUTER_TIERS` | unset (uses `policy.ts`) | JSON override for the tier → model allowlist — see [Tier models](#tier-models) |
 
 `/router-config` shows the effective classifier, masked key, thresholds, and which
 model each tier resolves to *right now*.
 
-### API notes for this machine
+### Tier models
 
-`~/.pi/agent/npm/node_modules` has no `@mariozechner/*` packages. The installed
-agent is `@earendil-works/pi-coding-agent` **0.85.1**, and this extension is written
-against it:
+A **tier** (`fast_cheap` · `balanced` · `frontier`) is what the policy reasons about; a
+**model id** is what `pi` can actually load. `policy.ts` holds the default mapping — and it is
+**an example taken from one model catalogue**, not a recommendation, so point it at models you
+actually have before trusting a route:
 
-- `pi.setModel(model: Model<any>): Promise<boolean>` — `false` means no auth for
-  that provider; the model is then left unchanged.
-- `ctx.modelRegistry.find(provider, modelId)` and
-  `ctx.modelRegistry.hasConfiguredAuth(model)` — used to validate every allowlist
-  entry at call time, so nothing is hardcoded blindly.
-- `ctx.model` — currently active model, used to skip redundant `setModel` calls.
-- `before_agent_start` fires after prompt/template expansion and before the agent
-  loop reads the model (`dist/core/agent-session.js:914` emits the event, then
-  `_runAgentPrompt(...)` runs), so a switch inside it applies to the current turn.
-- Built-in slash commands are dispatched before that hook, so `/model` is never
-  routed. The guard in `index.ts` is belt-and-braces and uses a copy of
-  `BUILTIN_SLASH_COMMANDS` from `dist/core/slash-commands.js` (that constant is not
-  exported from the package index).
+| tier | default model | price rank |
+|---|---|---|
+| `fast_cheap` | `deepseek/deepseek-v4-flash` | 0 |
+| `balanced` | `deepseek/deepseek-v4-pro` | 1 |
+| `frontier` | `deepseek/deepseek-v4-pro` | 1 |
+
+Those defaults are **an example from one catalogue**, not a recommendation. Override them
+without editing code by setting `TASK_ROUTER_TIERS` — a JSON object, partially or fully
+specified, omitted tiers keep their default:
+
+```sh
+export TASK_ROUTER_TIERS='{"fast_cheap":["anthropic/claude-haiku-4-5"],"balanced":["anthropic/claude-sonnet-4-5"],"frontier":["anthropic/claude-opus-4-1"]}'
+```
+
+Rules, all enforced at load time with one actionable error:
+
+- each entry is `"provider/modelId"`; only the **first** slash splits, so
+  `openrouter/meta-llama/llama-3-70b` is provider `openrouter`, model
+  `meta-llama/llama-3-70b`;
+- an unknown tier key, a non-array value, an empty array, a non-string entry, or a string
+  without a `provider/` prefix is rejected — `TASK_ROUTER_TIERS` is too easy to typo to fail
+  silently. The router then refuses to route and says which key is wrong, and
+  `/router-config` prints `tier table: UNUSABLE`.
+- entries are **ordered allowlists**: the first one that exists in your catalogue *and* has
+  auth configured wins. Entries that do not resolve are skipped, never guessed at — this is
+  also why a typo is loud rather than a silent downgrade.
+- a tier that resolves to nothing at all leaves the model untouched and notifies
+  `no usable model for <tier>`.
+
+The rotation here is deliberately two models, with `frontier` mapping to the same model as
+`balanced`. That is not an accident: "security → at least frontier" is what guarantees a
+security prompt never lands on the flash model, and the tier distinction still drives the
+confirm gate and the footer, even when the model behind two tiers is the same.
+
+Regardless of the tier, **`TASK_ROUTER_TIERS` never affects price ordering**:
+`MODEL_PRICE_RANK` in `policy.ts` decides whether a switch is "more expensive". A model it has
+no entry for is treated as expensive, so the confirmation gate fails closed rather than
+guessing.
 
 ---
 
@@ -193,7 +278,7 @@ against it:
 | command | what it does |
 |---|---|
 | `/router` | Last decision in this session: prompt, kind/complexity/tier, confidence, repo-map flag, provenance |
-| `/router-config` | Active classifier, masked key, base URL, model, thresholds, confirm-gate state, resolved models per tier, allowlist sizes |
+| `/router-config` | Active classifier, masked key, base URL, model, thresholds, confirm-gate state, marker path, tier table origin, resolved models per tier, effective allowlists |
 | `/router-check` | Run `fixtures.jsonl` through classify + `applyPolicy` — offline, no key, no LLM cost |
 | `/router-check --jev` | Same fixtures against **live** Jev; asserts tier, lists kind/complexity disagreements as notes |
 | `/router-check --fake` | Force the heuristic run even when the configured classifier cannot start |
@@ -265,14 +350,9 @@ unreachable**.
 
 ## 📐 Policy
 
-`policy.ts` owns the only place a model id appears, and `BASE_TIER`, the single
-kind → tier table both classifiers share.
-
-| tier | model | price rank |
-|---|---|---|
-| `fast_cheap` | `deepseek/deepseek-v4-flash` | 0 |
-| `balanced` | `deepseek/deepseek-v4-pro` | 1 |
-| `frontier` | `deepseek/deepseek-v4-pro` | 1 |
+`policy.ts` owns `BASE_TIER`, the single kind → tier table both classifiers share, and the
+thresholds. Model ids live there only as defaults — see [Tier models](#tier-models) for the
+allowlist and how to override it.
 
 **`BASE_TIER`** — the single kind → tier table:
 
@@ -282,12 +362,6 @@ kind → tier table both classifiers share.
 | `refactor` · `feature` | `balanced` |
 | `security` | `frontier` |
 | `unclear` | `ask_human` |
-
-The rotation is deliberately two models: `frontier` maps to the same model as
-`balanced` so the "security → at least frontier" rule still guarantees a security
-prompt never lands on the flash model. To widen it later, append entries to
-`TIER_MODELS` in `policy.ts`; entries that do not resolve or have no auth are
-skipped at call time.
 
 ### `applyPolicy()`, in order
 
@@ -301,9 +375,9 @@ skipped at call time.
 Frontier is terminal: a security route is never demoted to ask_human, because
 ask_human does not stop the turn — it only declines to change the model.
 
-Every id in the table exists in `pi --list-models` and has auth configured on this
-machine. On another machine, replace them with ids from `pi --list-models`; missing
-or unauthenticated entries are skipped, never guessed at.
+The three floors are the knobs you actually tune, alongside the questions in
+`providers/jev-questions.ts`. Everything above is one pure function over a `Decision`, which
+is why the policy is testable without a key, a network, or a model registry.
 
 ---
 
@@ -317,8 +391,8 @@ automatic.
 - **Only when the target is pricier** than the current model. With the two-model
   rotation that is `deepseek-v4-flash → deepseek-v4-pro`; downgrades and no-op
   switches never prompt. A target with no `MODEL_PRICE_RANK` entry is treated as
-  expensive (confirmed), so widening `TIER_MODELS` without updating the price
-  table still asks rather than silently skipping the gate.
+  expensive (confirmed), so widening the rotation (`TIER_MODELS` or `TASK_ROUTER_TIERS`)
+  without adding the matching price entry still asks rather than silently skipping the gate.
 - **Dialog options:** `Switch`, `Always allow`, `Stay`. Timeout is 30 s; a timeout or
   Esc counts as `Stay` (the model does not change).
 - **`Always allow`** is per session instance: it suppresses the dialog for the rest of
@@ -332,27 +406,40 @@ automatic.
 
 | command | effect |
 |---|---|
-| `/task-router off` | Stop routing: the hook no longer classifies or switches, and the model stays wherever you leave it. Writes a `disabled` marker file in the extension directory. |
+| `/task-router off` | Stop routing: the hook no longer classifies or switches, and the model stays wherever you leave it. Writes the marker file into Pi's agent dir. |
 | `/task-router on` | Re-enable (deletes the marker) and reset the confirm gate's "always allow" flag. |
 | `/task-router` | Show the current state. |
 
 The marker file is the source of truth, so `off` survives `/reload` and restarts
 until you turn it back on. `session_start` announces `disabled` instead of the
 classifier while it is off. The `/router`, `/router-check`, and `/router-config`
-commands keep working when disabled. The marker is the only entry in `.gitignore`,
-so it never shows up as a repo change.
+commands keep working when disabled.
+
+It lives at `~/.pi/agent/pi-jev-task-router.disabled` (`$PI_CODING_AGENT_DIR` is
+honoured), **not** in the package directory — installed packages are managed by Pi, and a
+git package is reset and cleaned when its pinned ref changes, so a marker written inside it
+would silently disappear on `pi update --extensions`. If the file cannot be written, the
+toggle reports the error instead of throwing.
 
 ---
 
 ## ✅ Verify
 
 **Pure mapping, no key and no network** — canned Jev responses through
-`mapJevResponse`, using Node's built-in runner (Node 24 executes `.ts` directly,
-no dependencies, no config). 15 tests across `policy.test.ts` and
+`mapJevResponse`, using Node's built-in runner (`.ts` runs directly from Node 22.18,
+no toolchain, no `npm install`). 23 tests across `policy.test.ts` and
 `providers/jev.test.ts`:
 
 ```sh
-node --test
+node --test          # or: npm test
+```
+
+**Types** — the same pure modules are type-checked in CI. `typescript`, `@types/node` and the
+Pi types are devDependencies, and Pi installs packages with `--omit=dev`, so none of it
+reaches a user:
+
+```sh
+npm install && npm run typecheck
 ```
 
 **Offline, no key, no LLM cost** — runs the heuristic + policy over the 17 fixtures:
@@ -373,7 +460,9 @@ disagreements as notes:
 /router-check --jev
 ```
 
-**End-to-end in the TUI** (notifies are invisible in `-p`), watching the footer model:
+**End-to-end in the TUI** (notifies are invisible in `-p`), watching the footer model. The
+right-hand column assumes the **default** tier table — with `TASK_ROUTER_TIERS` set, expect
+your own ids in the same tiers:
 
 | prompt | expect |
 |---|---|
@@ -411,7 +500,9 @@ set back to `false`, `/reload`.
 
 ## 📊 Measured live
 
-On this machine (`jev-1.13.0`):
+Measured on one machine, against `jev-1.13.0` — which is the shipped default precisely so
+these numbers stay attached to a version — on 2026-09-19. Reproduce with
+`/router-check --jev`:
 
 | metric | value |
 |---|---|
@@ -442,7 +533,8 @@ On this machine (`jev-1.13.0`):
   Ambiguity is `unclear`'s job. A prompt whose *symptom* says "delete" but whose
   task is "fix the permission check" still routes to frontier — needs_human fires,
   but frontier is terminal.
-- `/router-check --jev` is 16/17 on this machine. The one tier miss,
+- `/router-check --jev` scores 16/17 with `jev-1.13.0` on the machine these fixtures were
+  written from; your number may differ, which is the point of running it. The one tier miss,
   "Improve error handling in the parser", is Jev hedging (kind confidence 0.65)
   and the confidence floor lifting it to balanced — the floor doing its job, not a
   defect. The keyword fallback calls it bugfix/fast_cheap.
@@ -476,22 +568,36 @@ Jev is called only from `before_agent_start`, once per prompt.
 ## 📁 Layout
 
 ```text
-~/.pi/agent/extensions/task-router/
-  index.ts                    extension entry: before_agent_start hook + /router, /router-check, /router-config, /task-router
-  schema.ts                   task_kind / complexity / model_tier types; the Decision contract
-  policy.ts                   TIER_MODELS, MODEL_PRICE_RANK, BASE_TIER, thresholds, applyPolicy, resolveTierModel
-  policy.test.ts              price-rank and confirm-gate tests
-  fixtures.jsonl              17 expected-kind / complexity / tier cases
+task-router/                    (installed as pi-jev-task-router)
+  package.json                  pi package manifest: pi.extensions -> ./index.ts, test + typecheck scripts
+  tsconfig.json                 typecheck config (noEmit; dev-only)
+  index.ts                      extension entry: before_agent_start hook + /router, /router-check, /router-config, /task-router
+  schema.ts                     task_kind / complexity / model_tier types; the Decision contract
+  policy.ts                     BASE_TIER, thresholds, applyPolicy, resolveTierModel,
+                                TIER_MODELS + MODEL_PRICE_RANK (the defaults), parseTierModels
+  policy.test.ts                price-rank, confirm-gate and TASK_ROUTER_TIERS tests
+  fixtures.jsonl                17 expected-kind / complexity / tier cases
   README.md
-  LICENSE                     MIT
-  .gitignore                  the `disabled` marker
+  CONTRIBUTING.md               dev loop, where the knobs are, notes on the Pi extension API
+  LICENSE                       MIT
+  .gitignore
+  .github/
+    workflows/ci.yml            node --test + tsc --noEmit on Node 24
+    ISSUE_TEMPLATE/bug_report.md
   providers/
-    types.ts                  ClassifierProvider seam
-    jev.ts                    HTTP client, response mapping, retries, LRU cache
-    jev-questions.ts          the questions sent to Jev  (REVIEW THIS)
-    jev.test.ts               canned-response tests for the mapping
-    fake.ts                   keyword heuristic + the fallback provider
+    types.ts                    ClassifierProvider seam
+    jev.ts                      HTTP client, response mapping, retries, LRU cache
+    jev-questions.ts            the questions sent to Jev  (REVIEW THIS)
+    jev.test.ts                 canned-response tests for the mapping
+    fake.ts                     keyword heuristic + the fallback provider
 ```
+
+Where things end up once installed:
+
+| what | where |
+|---|---|
+| package | `~/.pi/agent/git/github.com/rizafahmi/pi-jev-task-router/` (or your own checkout under `~/.pi/agent/extensions/`) |
+| on/off marker | `~/.pi/agent/pi-jev-task-router.disabled` — kept out of the package dir on purpose (see [On/off toggle](#-onoff-toggle)) |
 
 ---
 
@@ -500,9 +606,9 @@ Jev is called only from `before_agent_start`, once per prompt.
 | requirement | why |
 |---|---|
 | `@earendil-works/pi-coding-agent` **0.85.1** (or compatible) | The extension is written against this build's `setModel`, `modelRegistry`, and `before_agent_start` semantics |
-| **Node ≥ 24** | Only to run `node --test` — Node 24 executes `.ts` directly, so the tests need no toolchain |
+| **Node ≥ 22.19** | Pi's own floor. `node --test` runs `.ts` directly from Node 22.18, so the tests need no toolchain and no `npm install`. CI runs Node 24 |
 | `TYPESAFE_API_KEY` | Optional. Without it the heuristic routes, and every degraded turn says so |
-| A model that exists in `pi --list-models` with auth | Each tier's allowlist is validated at call time; unresolvable entries are skipped |
+| A model that exists in `pi --list-models` with auth | Each tier's allowlist is validated at call time; unresolvable entries are skipped. Point the tiers at your own ids with [`TASK_ROUTER_TIERS`](#tier-models) |
 
 ---
 
