@@ -83,6 +83,18 @@ function isComplexity(value: unknown): value is Complexity {
   return typeof value === "string" && (COMPLEXITY_OPTIONS as string[]).includes(value);
 }
 
+function isProbability(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function readNoulAnswer(answers: Record<string, unknown>, id: string): number {
+  const answer = answers[id] as JevNoulAnswer | undefined;
+  if (!answer || answer.type !== "noul" || !isProbability(answer.noul)) {
+    throw new Error(`unusable ${id} answer: ${JSON.stringify(answer)}`);
+  }
+  return answer.noul;
+}
+
 /** "bugfix 0.97, security 0.02" — the two most likely options, for tuning. */
 function topProbabilities(probabilities: Record<string, number> | undefined): string {
   if (!probabilities) return "no probabilities";
@@ -109,8 +121,8 @@ export function mapJevResponse(payload: JevResponse, latencyMs: number): Provide
     throw new Error(`unusable ${COMPLEXITY_QUESTION} answer: ${JSON.stringify(complexity)}`);
   }
 
-  const repoMapAnswer = (answers[NEEDS_REPO_MAP_QUESTION] as JevNoulAnswer | undefined)?.noul;
-  const humanAnswer = (answers[NEEDS_HUMAN_QUESTION] as JevNoulAnswer | undefined)?.noul;
+  const repoMapAnswer = readNoulAnswer(answers, NEEDS_REPO_MAP_QUESTION);
+  const humanAnswer = readNoulAnswer(answers, NEEDS_HUMAN_QUESTION);
 
   // Confidence is the task_kind choice's confidence, NOT the minimum of both
   // axes. See the file-header comment: complexity confidence is low by nature,
@@ -122,9 +134,8 @@ export function mapJevResponse(payload: JevResponse, latencyMs: number): Provide
     task_kind: kind.choice,
     complexity: complexity.choice,
     model_tier: BASE_TIER[kind.choice],
-    needs_repo_map: repoMapAnswer !== undefined && repoMapAnswer >= NOUL_THRESHOLD,
-    // A missing noul answer means a question went unanswered: ask rather than assume.
-    needs_human: humanAnswer === undefined ? true : humanAnswer >= NOUL_THRESHOLD,
+    needs_repo_map: repoMapAnswer >= NOUL_THRESHOLD,
+    needs_human: humanAnswer >= NOUL_THRESHOLD,
     confidence,
     rationale: `jev: ${kind.choice} (${topProbabilities(kind.probabilities)})`,
   };
