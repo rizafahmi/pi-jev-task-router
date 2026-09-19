@@ -120,7 +120,9 @@ complexity only for escalation — complexity uncertainty never vetoes a route.
 - Responses are cached in-process by `(model, state)`, so a re-sent prompt does
   not pay for the same judgement twice.
 - An unreadable answer (unknown option, missing confidence, missing noul) throws
-  rather than guessing.
+  rather than guessing. That discards the whole classification, including a good
+  `task_kind` on the same response, so the turn then routes on the heuristic
+  instead of declining to route.
 
 ## The fallback: heuristic
 
