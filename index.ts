@@ -285,7 +285,7 @@ export default function taskRouter(pi: ExtensionAPI) {
     let source = selection.provider.name;
 
     try {
-      outcome = await selection.provider.classify(prompt, ctx.signal);
+      outcome = await selection.provider.classify(prompt);
     } catch (error) {
       if (source === "fake") {
         ctx.ui.notify(`router: classification failed - ${clip(String(error), 120)}`, "error");

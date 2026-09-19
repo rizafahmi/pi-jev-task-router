@@ -113,8 +113,11 @@ complexity only for escalation — complexity uncertainty never vetoes a route.
 - 429 / 529 retry with `retry-after` (capped at 1 s), up to three attempts.
 - Any other error, or a timeout, throws; the router catches it, notifies a warning,
   and routes with the heuristic instead. A degraded turn is always visible.
-- Responses are cached in-process by `(model, state)`, so an aborted or re-sent
-  prompt does not pay for the same judgement twice.
+- Classification is not cancellable. `before_agent_start` runs before the turn
+  exists, so `ctx.signal` is `undefined` there and there is no abort to honour;
+  `TASK_ROUTER_TIMEOUT_MS` is the only bound on a call.
+- Responses are cached in-process by `(model, state)`, so a re-sent prompt does
+  not pay for the same judgement twice.
 - An unreadable answer (unknown option, missing confidence, missing noul) throws
   rather than guessing.
 

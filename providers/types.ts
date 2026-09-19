@@ -24,5 +24,11 @@ export interface ProviderOutcome {
 export interface ClassifierProvider {
   /** Short label used in notifies: "jev" or "fake". */
   name: string;
-  classify(prompt: string, signal?: AbortSignal): Promise<ProviderOutcome>;
+  /**
+   * Classify one prompt. Takes no abort signal on purpose: the router calls this
+   * from before_agent_start, which runs before the turn exists, so `ctx.signal`
+   * is undefined there and there is nothing to cancel. The provider's own
+   * timeout is the only bound on the call.
+   */
+  classify(prompt: string): Promise<ProviderOutcome>;
 }

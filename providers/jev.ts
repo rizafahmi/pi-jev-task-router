@@ -23,8 +23,8 @@
  *   - An unreadable answer (unknown option name, missing confidence, missing noul)
  *     throws rather than guessing, so the router degrades to heuristics visibly.
  *     A wrong-but-confident classification is the one outcome worth avoiding.
- *   - responses are cached in-process by (model, state), so an aborted or retried
- *     turn does not pay for the same judgement twice.
+ *   - responses are cached in-process by (model, state), so a re-sent prompt does
+ *     not pay for the same judgement twice.
  */
 
 import type { Complexity, Decision, TaskKind } from "../schema.ts";
@@ -149,20 +149,18 @@ export function createJevProvider(config: JevConfig): ClassifierProvider {
   const cache = new Map<string, ProviderOutcome>();
 
   /**
-   * One HTTP attempt sequence. The abort controller is created once, outside the
-   * retry loop, so timeoutMs is a budget for the whole call rather than per
+   * One HTTP attempt sequence. The timeout controller is created once, outside
+   * the retry loop, so timeoutMs is a budget for the whole call rather than per
    * attempt — a classification that eats the turn's latency budget is worse than
    * a classification that falls back to heuristics.
    */
-  async function request(state: string, outerSignal: AbortSignal | undefined): Promise<JevResponse> {
+  async function request(state: string): Promise<JevResponse> {
     const controller = new AbortController();
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
     }, config.timeoutMs);
-    const forwardAbort = () => controller.abort();
-    outerSignal?.addEventListener("abort", forwardAbort, { once: true });
 
     try {
       let lastError: Error | undefined;
@@ -201,18 +199,16 @@ export function createJevProvider(config: JevConfig): ClassifierProvider {
       throw lastError ?? new Error("jev: retries exhausted");
     } catch (error) {
       if (timedOut) throw new Error(`jev timed out after ${config.timeoutMs}ms`);
-      if (outerSignal?.aborted) throw new Error("jev aborted");
       throw error;
     } finally {
       clearTimeout(timer);
-      outerSignal?.removeEventListener("abort", forwardAbort);
     }
   }
 
   return {
     name: "jev",
 
-    async classify(prompt: string, signal?: AbortSignal): Promise<ProviderOutcome> {
+    async classify(prompt: string): Promise<ProviderOutcome> {
       const state = prompt.slice(0, config.maxChars);
 
       const key = `${config.model}\u0000${state}`;
@@ -220,7 +216,7 @@ export function createJevProvider(config: JevConfig): ClassifierProvider {
       if (cached) return { ...cached, detail: `${cached.detail} · cached` };
 
       const startedAt = Date.now();
-      const payload = await request(state, signal);
+      const payload = await request(state);
       const outcome = mapJevResponse(payload, Date.now() - startedAt);
 
       cache.set(key, outcome);
