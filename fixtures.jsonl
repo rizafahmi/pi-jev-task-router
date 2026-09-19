@@ -1,0 +1,17 @@
+{"prompt":"Fix the crash when saving a draft","expect_kind":"bugfix","expect_complexity":"S","expect_tier":"fast_cheap","note":"baseline bugfix"}
+{"prompt":"Fix the XSS in the comment form","expect_kind":"security","expect_complexity":"L","expect_tier":"frontier","note":"XSS beats the fix keyword"}
+{"prompt":"There's an IDOR in the orders endpoint - users can read other people's orders","expect_kind":"security","expect_complexity":"L","expect_tier":"frontier","note":"vuln keyword"}
+{"prompt":"Users can delete other orgs' projects by changing the project id, looks like a missing permission check","expect_kind":"security","expect_complexity":"L","expect_tier":"frontier","note":"vuln phrasing"}
+{"prompt":"Refactor the billing context into smaller modules","expect_kind":"refactor","expect_complexity":"M","expect_tier":"balanced","note":"baseline refactor"}
+{"prompt":"Clean up the dead code in the exporter","expect_kind":"refactor","expect_complexity":"M","expect_tier":"balanced","note":"cleanup alias"}
+{"prompt":"Add unit tests for the retry helper","expect_kind":"tests","expect_complexity":"S","expect_tier":"fast_cheap","note":"baseline tests"}
+{"prompt":"Fix the flaky tests everywhere in the repo","expect_kind":"tests","expect_complexity":"L","expect_tier":"balanced","note":"exercises the L + fast_cheap lift"}
+{"prompt":"Update the README with the new flags","expect_kind":"docs","expect_complexity":"S","expect_tier":"fast_cheap","note":"baseline docs"}
+{"prompt":"Document the retry behaviour in the changelog","expect_kind":"docs","expect_complexity":"S","expect_tier":"fast_cheap","note":"docs keyword"}
+{"prompt":"Harden the session token handling across the codebase","expect_kind":"security","expect_complexity":"L","expect_tier":"frontier","note":"large scope security"}
+{"prompt":"Improve error handling in the parser","expect_kind":"bugfix","expect_complexity":"S","expect_tier":"fast_cheap","note":"error keyword"}
+{"prompt":"Add a webhook dispatcher for tenant events","expect_kind":"feature","expect_complexity":"M","expect_tier":"balanced","note":"feature fallback"}
+{"prompt":"help","expect_kind":"unclear","expect_complexity":"S","expect_tier":"ask_human","note":"vague word"}
+{"prompt":"do it","expect_kind":"unclear","expect_complexity":"S","expect_tier":"ask_human","note":"vague phrase"}
+{"prompt":"make it better","expect_kind":"unclear","expect_complexity":"S","expect_tier":"ask_human","note":"short, no signal"}
+{"prompt":"","expect_kind":"unclear","expect_complexity":"S","expect_tier":"ask_human","note":"empty prompt"}
