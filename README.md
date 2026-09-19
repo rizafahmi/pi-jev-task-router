@@ -175,6 +175,20 @@ automatic.
 - `/router-config` shows whether the gate is on or has been always-allowed.
 - Price ordering lives in `MODEL_PRICE_RANK` in `policy.ts`, next to `TIER_MODELS`.
 
+## On/off toggle
+
+- `/task-router off` — stop routing: the hook no longer classifies or switches,
+  and the model stays wherever you leave it. Writes a `disabled` marker file in
+  the extension directory.
+- `/task-router on` — re-enable (deletes the marker) and reset the confirm gate's
+  "always allow" flag.
+- `/task-router` — show the current state.
+
+The marker file is the source of truth, so `off` survives `/reload` and restarts
+until you turn it back on. `session_start` announces `disabled` instead of the
+classifier while it is off. The `/router`, `/router-check`, and `/router-config`
+commands keep working when disabled.
+
 ## Verify
 
 Offline, no key, no LLM cost — runs the heuristic + policy over the fixtures:

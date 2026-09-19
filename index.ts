@@ -21,7 +21,7 @@
  * throwaway test with: pi -e ~/.pi/agent/extensions/task-router/index.ts
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -91,6 +91,7 @@ const BUILTIN_COMMANDS = new Set([
 ]);
 
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
+const DISABLED_MARKER = join(EXTENSION_DIR, "disabled");
 
 function readPositiveNumber(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -228,14 +229,20 @@ export default function taskRouter(pi: ExtensionAPI) {
   const selection = selectProvider();
   const fallback = fakeProvider("jev call failed");
 
+  // The marker file is the source of truth for the on/off toggle: it survives
+  // /reload and restarts, unlike an in-memory flag.
+  let enabled = !existsSync(DISABLED_MARKER);
   let last: LastRoute | undefined;
   let alwaysAllow = false;
 
   pi.on("session_start", async (_event, ctx) => {
-    ctx.ui.notify(`task-router: ${selection.label}`, "info");
+    ctx.ui.notify(`task-router: ${enabled ? selection.label : "disabled (use /task-router on to enable)"}`, "info");
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
+    // Disabled: do nothing — no classify, no Jev call, no setModel, no notify.
+    if (!enabled) return;
+
     const prompt = event.prompt ?? "";
 
     // /model, /reload, /cost, templates and skills own their own behaviour.
@@ -383,6 +390,38 @@ export default function taskRouter(pi: ExtensionAPI) {
           .join(" ")}`,
         "info",
       );
+    },
+  });
+
+  pi.registerCommand("task-router", {
+    description: "Toggle the router: /task-router on|off, or bare to show state",
+    handler: async (args, ctx) => {
+      const arg = args.trim().toLowerCase();
+
+      if (arg === "on") {
+        if (existsSync(DISABLED_MARKER)) unlinkSync(DISABLED_MARKER);
+        enabled = true;
+        alwaysAllow = false;
+        ctx.ui.notify("task-router enabled", "info");
+        return;
+      }
+
+      if (arg === "off") {
+        writeFileSync(DISABLED_MARKER, "", "utf8");
+        enabled = false;
+        ctx.ui.notify("task-router disabled - model will stay wherever you leave it", "warning");
+        return;
+      }
+
+      if (arg === "") {
+        ctx.ui.notify(
+          `task-router is ${enabled ? `enabled (${selection.label})` : "disabled - /task-router on to enable"}`,
+          "info",
+        );
+        return;
+      }
+
+      ctx.ui.notify("usage: /task-router on | off  (bare shows state)", "warning");
     },
   });
 
