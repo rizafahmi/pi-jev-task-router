@@ -172,6 +172,26 @@ export function mapJevResponse(payload: JevResponse, latencyMs: number): Provide
   return { decision, detail, modelVersion: payload.model };
 }
 
+/** A setTimeout that rejects when the signal aborts, so backoff never overruns the budget. */
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error("aborted"));
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout>;
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new Error("aborted"));
+    };
+    timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export function createJevProvider(config: JevConfig): ClassifierProvider {
   const cache = new Map<string, ProviderOutcome>();
 
@@ -220,7 +240,7 @@ export function createJevProvider(config: JevConfig): ClassifierProvider {
           Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
             ? Math.min(retryAfterSeconds * 1000, 1000)
             : 250 * 2 ** attempt;
-        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        await sleep(waitMs, controller.signal);
       }
 
       throw lastError ?? new Error("jev: retries exhausted");
