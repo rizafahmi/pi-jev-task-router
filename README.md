@@ -37,6 +37,7 @@ Jev call fails, it degrades to a keyword heuristic and says so.
 - [🚀 Quick start](#-quick-start)
 - [📦 Install](#-install)
 - [🔧 Configuration](#-configuration)
+  - [Where a missing key is reported](#where-a-missing-key-is-reported)
   - [Tier models](#tier-models)
 - [🎛 Slash commands](#-slash-commands)
 - [🧠 The classifier: Jev](#-the-classifier-jev)
@@ -214,7 +215,7 @@ uninstalls it.
 
 | env var | default | meaning |
 |---|---|---|
-| `TYPESAFE_API_KEY` | unset | enables Jev; unset → heuristic only |
+| `TYPESAFE_API_KEY` | unset | enables Jev. Unset **or blank** → heuristic only; with `TASK_ROUTER_PROVIDER=jev` its absence is an error |
 | `TYPESAFE_BASE_URL` | `https://api.typesafe.ai` | API root |
 | `TASK_ROUTER_PROVIDER` | `auto` | `auto` = Jev if key set; `jev` = Jev, error if no key; `fake` = heuristic |
 | `TASK_ROUTER_JEV_MODEL` | `jev-1.13.0` | pinned; set `jev-latest` to follow the alias |
@@ -224,6 +225,27 @@ uninstalls it.
 
 `/router-config` shows the effective classifier, masked key, thresholds, and which
 model each tier resolves to *right now*.
+
+### Where a missing key is reported
+
+The key is read once, when the extension loads, and a blank value counts as missing. Getting
+it wrong is never silent:
+
+| situation | what you see |
+|---|---|
+| no key, `TASK_ROUTER_PROVIDER=auto` | Session start says `heuristic (TYPESAFE_API_KEY is unset)`. Routing still works, on the heuristic |
+| no key, `TASK_ROUTER_PROVIDER=jev` | Misconfiguration: the router refuses to route, the footer shows `inert - see /router-config`, and the first prompt notifies an error |
+| the key is set but rejected upstream | The turn notifies `jev unavailable, using heuristics - <status>` and routes on the heuristic |
+| a blank value (`TYPESAFE_API_KEY= `) | Treated as missing, not as a bad key — no wasted API call |
+
+`/router-config` (masked key + resolved classifier) and `/task-router` (enabled, with which
+classifier) answer the question at any time, whether or not you saw the startup line. Only the
+session-start line and the confirm dialogs need a UI: in `pi -p` and `--mode json` pi discards
+extension notifications, so when the router is inert there it writes the same line to **stderr**
+instead.
+
+Setting the variable is up to you and your environment — a shell profile, a wrapper script, a
+secret manager, a container env. The extension only reads it.
 
 ### Tier models
 
@@ -555,6 +577,9 @@ these numbers stay attached to a version — on 2026-09-19. Reproduce with
   router can pick a model outside the scoped set if the tier says so.
 - A manual `/model` choice survives until your next prompt, then the router re-routes.
   Inherent to pattern B.
+- `TYPESAFE_API_KEY` comes from the environment, so it is inherited by everything Pi
+  spawns — including the commands the model runs through the `bash` tool, where `env`
+  shows it. Pass it per-process if that matters to you.
 
 ---
 

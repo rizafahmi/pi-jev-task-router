@@ -42,7 +42,7 @@ import {
 } from "./policy.ts";
 import type { TierModels } from "./policy.ts";
 import { fakeProvider } from "./providers/fake.ts";
-import { createJevProvider, JEV_DEFAULT_BASE_URL, JEV_DEFAULT_MODEL } from "./providers/jev.ts";
+import { createJevProvider, JEV_DEFAULT_BASE_URL, JEV_DEFAULT_MODEL, normalizeApiKey } from "./providers/jev.ts";
 import type { ClassifierProvider, ProviderOutcome } from "./providers/types.ts";
 
 /**
@@ -132,7 +132,8 @@ function readPositiveNumber(name: string, fallback: number): number {
 
 const CONFIG = {
   providerMode: (process.env.TASK_ROUTER_PROVIDER ?? "auto").toLowerCase(),
-  apiKey: process.env.TYPESAFE_API_KEY,
+  // Absent and blank are the same state: no key. See normalizeApiKey.
+  apiKey: normalizeApiKey(process.env.TYPESAFE_API_KEY),
   baseUrl: process.env.TYPESAFE_BASE_URL ?? JEV_DEFAULT_BASE_URL,
   model: process.env.TASK_ROUTER_JEV_MODEL ?? JEV_DEFAULT_MODEL,
   timeoutMs: readPositiveNumber("TASK_ROUTER_TIMEOUT_MS", 4000),
@@ -308,12 +309,29 @@ export default function taskRouter(pi: ExtensionAPI) {
   let tiersReported = false;
 
   pi.on("session_start", async (_event, ctx) => {
-    const tierNote =
-      enabled && tierSelection.kind === "misconfigured" ? ` · tier table: ${tierSelection.reason}` : "";
-    ctx.ui.notify(
-      `task-router: ${enabled ? selectionLabel(selection) : "disabled (use /task-router on to enable)"}${tierNote}`,
-      tierNote ? "error" : "info",
-    );
+    // The tier note only matters while routing is on: a disabled router is not asked
+    // to route, so its tier table cannot be wrong in any way the user cares about.
+    const tierNote = tierSelection.kind === "misconfigured" ? ` · tier table: ${tierSelection.reason}` : "";
+    const line = `task-router: ${
+      enabled ? selectionLabel(selection) : "disabled (use /task-router on to enable)"
+    }${enabled ? tierNote : ""}`;
+
+    // No classifier or no usable tier table means the router is inert, which is an
+    // error; otherwise this is just "which classifier am I on".
+    const inert = enabled && (selection.kind === "misconfigured" || tierSelection.kind === "misconfigured");
+    ctx.ui.notify(line, inert ? "error" : "info");
+
+    if (!inert) return;
+
+    // setStatus outlives the one-shot notify above, so the inert state stays on
+    // screen instead of scrolling away after the first prompt.
+    ctx.ui.setStatus("task-router", "inert - see /router-config");
+
+    // notify() and setStatus() are no-ops when there is no UI: pi's noOpUIContext
+    // gives both empty bodies in -p and --mode json (RPC implements notify), so a
+    // headless run with no key would otherwise say nothing at all and simply never
+    // switch models. stderr, once per session.
+    if (!ctx.hasUI) process.stderr.write(`${line}\n`);
   });
 
   pi.on("before_agent_start", async (event, ctx) => {

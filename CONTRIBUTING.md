@@ -76,6 +76,13 @@ Things that cost time to rediscover. Verified against `@earendil-works/pi-coding
   routed. `BUILTIN_COMMANDS` in `index.ts` is a copy of `BUILTIN_SLASH_COMMANDS` from
   `dist/core/slash-commands.js`; that constant is not exported from the package index, so it
   is copied verbatim and the version is stated next to it. Re-check it on a Pi upgrade.
+- `ctx.ui.notify` and `ctx.ui.setStatus` are **no-ops without a UI**. Pi swaps in
+  `noOpUIContext` (`dist/core/extensions/runner.js:88-100`) for `-p` and `--mode json`; only
+  interactive and RPC implement them. `ctx.hasUI` tells you which you are in, so anything a
+  headless user must know has to be written to stderr as well (see `session_start`).
+- `TYPESAFE_API_KEY` is normalised at load (`normalizeApiKey`): absent and blank are one state.
+  A blank key used to be read as present, which selected Jev, 403'd on every call, and reported
+  the classifier as "jev" while degrading on every prompt.
 - The on/off marker lives in Pi's agent dir, not next to the code: `PI_CODING_AGENT_DIR`
   (tilde-expanded) or `~/.pi/agent`. A marker inside an installed package would be wiped
   when Pi reconciles the checkout. This mirrors Pi's own `getAgentDir()` deliberately, to keep

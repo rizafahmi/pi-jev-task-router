@@ -11,11 +11,10 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mapJevResponse } from "./jev.ts";
+import { mapJevResponse, normalizeApiKey } from "./jev.ts";
 import { NOUL_THRESHOLD } from "../policy.ts";
 
-/** One live-shaped response; `answers` entries are overridden per test. */
-function response(answers: Record<string, unknown> = {}) {
+/** One live-shaped response; `answers` entries are overridden per test. */function response(answers: Record<string, unknown> = {}) {
   return {
     model: "jev-1.13.0",
     usage: { input_tokens: 915, output_tokens: 12 },
@@ -119,4 +118,27 @@ test("a complexity confidence outside [0, 1] is dropped from the detail, not thr
   // Complexity confidence is display-only; garbage there must not discard a good kind.
   assert.equal(decision.complexity, "M");
   assert.doesNotMatch(detail, /42/);
+});
+
+/**
+ * TYPESAFE_API_KEY presence. The router decides between Jev and the heuristic by
+ * whether a key *exists*, so "exists" has to mean a usable string: a blank value
+ * used to be read as present, which reported the classifier as "jev" while every
+ * call 403'd and degraded to the heuristic anyway.
+ */
+
+test("an absent key is absent", () => {
+  assert.equal(normalizeApiKey(undefined), undefined);
+});
+
+test("a blank key counts as absent, never as present", () => {
+  assert.equal(normalizeApiKey(""), undefined);
+  assert.equal(normalizeApiKey(" "), undefined);
+  assert.equal(normalizeApiKey("\t\n  "), undefined);
+});
+
+test("a real key is trimmed and kept", () => {
+  assert.equal(normalizeApiKey("sk-live-abc123"), "sk-live-abc123");
+  assert.equal(normalizeApiKey("  sk-live-abc123  "), "sk-live-abc123");
+  assert.equal(normalizeApiKey("\nsk-live-abc123\t"), "sk-live-abc123");
 });

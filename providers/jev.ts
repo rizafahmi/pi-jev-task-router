@@ -43,6 +43,20 @@ import type { ClassifierProvider, ProviderOutcome } from "./types.ts";
 export const JEV_DEFAULT_BASE_URL = "https://api.typesafe.ai";
 
 /**
+ * A key read from the environment: `undefined` when absent **or blank**.
+ *
+ * `TYPESAFE_API_KEY= ` — a stray space in a shell rc, or an unset variable
+ * expanded into a config file — is not a key. Treating it as one builds a Jev
+ * provider that 403s on every call, so the router reports its classifier as
+ * "jev" while actually degrading to the heuristic on every prompt. Blank is
+ * absent, which is the state the rest of the code already handles.
+ */
+export function normalizeApiKey(raw: string | undefined): string | undefined {
+  const trimmed = raw?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/**
  * Pinned, not `jev-latest`: the README's latency, cost and confidence figures were
  * measured against 1.13.0, and an alias that moves would make them quietly wrong.
  * Set TASK_ROUTER_JEV_MODEL=jev-latest to follow the alias on purpose.
