@@ -113,6 +113,7 @@ interface Selection {
   provider: ClassifierProvider;
   /** Human-readable description of what is active, shown by /router-config. */
   label: string;
+  configurationError?: string;
 }
 
 function selectProvider(): Selection {
@@ -125,6 +126,13 @@ function selectProvider(): Selection {
       CONFIG.providerMode === "jev"
         ? "TASK_ROUTER_PROVIDER=jev but TYPESAFE_API_KEY is unset"
         : "TYPESAFE_API_KEY is unset";
+    if (CONFIG.providerMode === "jev") {
+      return {
+        provider: fakeProvider(why),
+        label: `configuration error (${why})`,
+        configurationError: why,
+      };
+    }
     return { provider: fakeProvider(why), label: `heuristic (${why})` };
   }
 
@@ -247,6 +255,11 @@ export default function taskRouter(pi: ExtensionAPI) {
 
     // /model, /reload, /cost, templates and skills own their own behaviour.
     if (isCommandLike(pi, prompt)) return;
+
+    if (selection.configurationError) {
+      ctx.ui.notify(`router: ${selection.configurationError}`, "error");
+      return;
+    }
 
     // Image-only turn: no text signal to classify, and vision support is a
     // property of the current model, not of a tier.
@@ -432,6 +445,11 @@ export default function taskRouter(pi: ExtensionAPI) {
 
       let provider: ClassifierProvider = selection.provider;
       let label = selection.label;
+
+      if (selection.configurationError && !useJev) {
+        ctx.ui.notify(`router-check: ${selection.configurationError}`, "error");
+        return;
+      }
 
       if (useJev) {
         if (!CONFIG.apiKey) {
