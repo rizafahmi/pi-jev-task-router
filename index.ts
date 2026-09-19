@@ -13,7 +13,7 @@
  *   TYPESAFE_API_KEY         enables Jev. Unset -> heuristics only.
  *   TYPESAFE_BASE_URL        default https://api.typesafe.ai
  *   TASK_ROUTER_PROVIDER     "auto" (default) | "jev" | "fake"
- *   TASK_ROUTER_JEV_MODEL    default jev-latest; pin e.g. jev-1.13.0
+ *   TASK_ROUTER_JEV_MODEL    default jev-1.13.0; jev-latest follows the alias
  *   TASK_ROUTER_TIMEOUT_MS   default 4000, the whole call including retries
  *   TASK_ROUTER_MAX_CHARS    default 4000, prompt characters sent as `state`
  *
@@ -21,7 +21,8 @@
  * throwaway test with: pi -e ~/.pi/agent/extensions/task-router/index.ts
  */
 
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -32,11 +33,14 @@ import {
   formatRef,
   isMoreExpensive,
   NOUL_THRESHOLD,
+  parseTierModels,
   resolveTierModel,
   routableTier,
+  ROUTABLE_TIERS,
   TIER_MODELS,
   UNSURE_FLOOR,
 } from "./policy.ts";
+import type { TierModels } from "./policy.ts";
 import { fakeProvider } from "./providers/fake.ts";
 import { createJevProvider, JEV_DEFAULT_BASE_URL, JEV_DEFAULT_MODEL } from "./providers/jev.ts";
 import type { ClassifierProvider, ProviderOutcome } from "./providers/types.ts";
@@ -91,7 +95,34 @@ const BUILTIN_COMMANDS = new Set([
 ]);
 
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
-const DISABLED_MARKER = join(EXTENSION_DIR, "disabled");
+
+/**
+ * The on/off marker lives in pi's agent dir, not in the extension directory.
+ *
+ * Installed packages are managed by pi: a git package is reset and cleaned when
+ * its pinned ref changes, so a marker written inside the package would silently
+ * disappear on `pi update --extensions`. The agent dir is also the only location
+ * that is reliably writable (npm and git installs do not promise a writable
+ * package directory).
+ *
+ * Resolution mirrors pi's own getAgentDir(): `PI_CODING_AGENT_DIR` (tilde
+ * expanded) or `~/.pi/agent`. Kept local so the extension keeps its type-only
+ * imports from the pi package.
+ */
+const AGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
+
+function resolveAgentDir(): string {
+  const override = process.env[AGENT_DIR_ENV];
+  if (override && override.trim()) {
+    const trimmed = override.trim();
+    if (trimmed === "~") return homedir();
+    if (trimmed.startsWith("~/")) return join(homedir(), trimmed.slice(2));
+    return trimmed;
+  }
+  return join(homedir(), ".pi", "agent");
+}
+
+const DISABLED_MARKER = join(resolveAgentDir(), "pi-jev-task-router.disabled");
 
 function readPositiveNumber(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -107,6 +138,7 @@ const CONFIG = {
   timeoutMs: readPositiveNumber("TASK_ROUTER_TIMEOUT_MS", 4000),
   maxChars: readPositiveNumber("TASK_ROUTER_MAX_CHARS", 4000),
   cacheSize: 100,
+  tiers: process.env.TASK_ROUTER_TIERS,
 };
 
 /**
@@ -122,6 +154,26 @@ type Selection =
 /** One line describing what is active, for session_start, /router-config and /task-router. */
 function selectionLabel(selection: Selection): string {
   return selection.kind === "ready" ? selection.label : `configuration error (${selection.reason})`;
+}
+
+/**
+ * Which tier -> allowlist table is in effect. Separate from `Selection`: a broken
+ * tier table does not make the classifier unusable, and `/router-check --jev`
+ * (which only asserts tier *names*, never model ids) must keep working so you can
+ * still tune the questions while the table is wrong.
+ */
+type TierSelection =
+  | { kind: "ready"; tiers: TierModels; label: string }
+  | { kind: "misconfigured"; reason: string };
+
+function selectTiers(): TierSelection {
+  const parsed = parseTierModels(CONFIG.tiers);
+  if ("error" in parsed) return { kind: "misconfigured", reason: parsed.error };
+  return {
+    kind: "ready",
+    tiers: parsed.tiers,
+    label: CONFIG.tiers === undefined || CONFIG.tiers.trim() === "" ? "defaults (policy.ts)" : `TASK_ROUTER_TIERS`,
+  };
 }
 
 function selectProvider(): Selection {
@@ -242,6 +294,7 @@ function loadFixtures(): Fixture[] {
 
 export default function taskRouter(pi: ExtensionAPI) {
   const selection = selectProvider();
+  const tierSelection = selectTiers();
   const fallback = fakeProvider("jev call failed");
 
   // The marker file is the source of truth for the on/off toggle: it survives
@@ -252,11 +305,14 @@ export default function taskRouter(pi: ExtensionAPI) {
   // A misconfiguration is reported once per session instance; after that
   // /task-router, /router-config and /router-check still say what is wrong.
   let configurationReported = false;
+  let tiersReported = false;
 
   pi.on("session_start", async (_event, ctx) => {
+    const tierNote =
+      enabled && tierSelection.kind === "misconfigured" ? ` · tier table: ${tierSelection.reason}` : "";
     ctx.ui.notify(
-      `task-router: ${enabled ? selectionLabel(selection) : "disabled (use /task-router on to enable)"}`,
-      "info",
+      `task-router: ${enabled ? selectionLabel(selection) : "disabled (use /task-router on to enable)"}${tierNote}`,
+      tierNote ? "error" : "info",
     );
   });
 
@@ -277,6 +333,15 @@ export default function taskRouter(pi: ExtensionAPI) {
       if (!configurationReported) {
         configurationReported = true;
         ctx.ui.notify(`router: ${selection.reason}`, "error");
+      }
+      return;
+    }
+
+    // No point paying for a classification that cannot be acted on.
+    if (tierSelection.kind === "misconfigured") {
+      if (!tiersReported) {
+        tiersReported = true;
+        ctx.ui.notify(`router: ${tierSelection.reason}`, "error");
       }
       return;
     }
@@ -330,10 +395,10 @@ export default function taskRouter(pi: ExtensionAPI) {
       return;
     }
 
-    const model = resolveTierModel(ctx.modelRegistry, decision.model_tier);
+    const model = resolveTierModel(ctx.modelRegistry, decision.model_tier, tierSelection.tiers);
     if (!model) {
       ctx.ui.notify(
-        `router: no usable model for ${decision.model_tier} - check TIER_MODELS in policy.ts, models.json and auth`,
+        `router: no usable model for ${decision.model_tier} - check the tier table (${tierSelection.label}), models.json and auth`,
         "error",
       );
       last = { prompt, decision, outcome: "unresolved", source, detail: outcome.detail };
@@ -409,18 +474,27 @@ export default function taskRouter(pi: ExtensionAPI) {
         `  confirm gate: ${alwaysAllow ? "off (always-allow this session)" : "on (expensive switches only, TUI, 30s timeout)"}`,
         "info",
       );
+      ctx.ui.notify(
+        `  marker: ${enabled ? "enabled" : "disabled"} (${DISABLED_MARKER})`,
+        "info",
+      );
 
-      const resolved = (["fast_cheap", "balanced", "frontier"] as const)
-        .map((tier) => {
-          const model = resolveTierModel(ctx.modelRegistry, tier);
-          return `${tier}=${model ? `${model.provider}/${model.id}` : "UNRESOLVED"}`;
-        })
-        .join(" · ");
+      if (tierSelection.kind === "misconfigured") {
+        ctx.ui.notify(`  tier table: UNUSABLE - ${tierSelection.reason}`, "error");
+      }
+
+      const tiers = tierSelection.kind === "ready" ? tierSelection.tiers : TIER_MODELS;
+      const resolved = ROUTABLE_TIERS.map((tier) => {
+        const model = resolveTierModel(ctx.modelRegistry, tier, tiers);
+        return `${tier}=${model ? `${model.provider}/${model.id}` : "UNRESOLVED"}`;
+      }).join(" · ");
+      ctx.ui.notify(
+        `  tier table: ${tierSelection.kind === "ready" ? tierSelection.label : "defaults (the override is unusable)"}`,
+        "info",
+      );
       ctx.ui.notify(`  resolved now: ${resolved}`, "info");
       ctx.ui.notify(
-        `  allowlists: ${(["fast_cheap", "balanced", "frontier"] as const)
-          .map((tier) => `${tier}[${TIER_MODELS[tier].length}]`)
-          .join(" ")}`,
+        `  allowlists: ${ROUTABLE_TIERS.map((tier) => `${tier}[${tiers[tier].map(formatRef).join(",")}]`).join(" ")}`,
         "info",
       );
     },
@@ -432,7 +506,12 @@ export default function taskRouter(pi: ExtensionAPI) {
       const arg = args.trim().toLowerCase();
 
       if (arg === "on") {
-        if (existsSync(DISABLED_MARKER)) unlinkSync(DISABLED_MARKER);
+        try {
+          if (existsSync(DISABLED_MARKER)) unlinkSync(DISABLED_MARKER);
+        } catch (error) {
+          ctx.ui.notify(`task-router: cannot clear ${DISABLED_MARKER} (${String(error)})`, "error");
+          return;
+        }
         enabled = true;
         alwaysAllow = false;
         ctx.ui.notify("task-router enabled", "info");
@@ -440,7 +519,13 @@ export default function taskRouter(pi: ExtensionAPI) {
       }
 
       if (arg === "off") {
-        writeFileSync(DISABLED_MARKER, "", "utf8");
+        try {
+          mkdirSync(dirname(DISABLED_MARKER), { recursive: true });
+          writeFileSync(DISABLED_MARKER, "", "utf8");
+        } catch (error) {
+          ctx.ui.notify(`task-router: cannot write ${DISABLED_MARKER} (${String(error)})`, "error");
+          return;
+        }
         enabled = false;
         ctx.ui.notify("task-router disabled - model will stay wherever you leave it", "warning");
         return;

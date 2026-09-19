@@ -41,12 +41,18 @@ import {
 import type { ClassifierProvider, ProviderOutcome } from "./types.ts";
 
 export const JEV_DEFAULT_BASE_URL = "https://api.typesafe.ai";
-export const JEV_DEFAULT_MODEL = "jev-latest";
+
+/**
+ * Pinned, not `jev-latest`: the README's latency, cost and confidence figures were
+ * measured against 1.13.0, and an alias that moves would make them quietly wrong.
+ * Set TASK_ROUTER_JEV_MODEL=jev-latest to follow the alias on purpose.
+ */
+export const JEV_DEFAULT_MODEL = "jev-1.13.0";
 
 export interface JevConfig {
   apiKey: string;
   baseUrl: string;
-  /** An alias like "jev-latest", or a pinned id like "jev-1.13.0". */
+  /** A pinned id like "jev-1.13.0", or "jev-latest" to follow the alias. */
   model: string;
   /** Total budget for one classification, retries included. */
   timeoutMs: number;

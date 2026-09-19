@@ -1,1 +1,9 @@
-disabled
+# dev-only tooling (typescript / @types/node); pi installs this package with --omit=dev,
+# so consumers never see it
+node_modules/
+
+# macOS
+.DS_Store
+
+# logs
+*.log

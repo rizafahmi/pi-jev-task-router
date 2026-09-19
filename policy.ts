@@ -1,16 +1,17 @@
 /**
- * task-router — tier policy (Step 2).
+ * task-router — tier policy.
  *
- * Two responsibilities:
+ * Three responsibilities, all of them pure:
  *   1. applyPolicy(): classifier output -> final tier (no model ids involved).
- *   2. resolveTierModel(): tier -> the first model from that tier's allowlist that
- *      actually exists in THIS machine's registry and has configured auth.
+ *   2. parseTierModels(): TASK_ROUTER_TIERS -> the effective tier -> allowlist table.
+ *   3. resolveTierModel(): tier -> the first model from that tier's allowlist that
+ *      exists in the caller's registry and has configured auth.
  *
- * Nothing here invents a provider: every candidate is validated through
- * ModelRegistry.find() + ModelRegistry.hasConfiguredAuth() at call time.
+ * Nothing here invents a provider: every candidate is validated through the lookup
+ * passed in (find + hasConfiguredAuth) at call time. This module imports no pi types
+ * at all, which is why the policy is testable without a registry, a key, or a network.
  */
 
-import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { Decision, ModelTier, TaskKind } from "./schema.ts";
 
 export interface ModelRef {
@@ -19,6 +20,12 @@ export interface ModelRef {
 }
 
 export type RoutableTier = Exclude<ModelTier, "ask_human">;
+
+/** The three tiers a prompt can actually be routed to, in ascending capability. */
+export const ROUTABLE_TIERS = ["fast_cheap", "balanced", "frontier"] as const satisfies readonly RoutableTier[];
+
+/** The effective tier -> allowlist table; `TIER_MODELS` unless overridden. */
+export type TierModels = Record<RoutableTier, ModelRef[]>;
 
 /** Ascending capability. Used for "at least this tier" bumps. */
 const TIER_RANK: Record<ModelTier, number> = {
@@ -72,9 +79,11 @@ function maxTier(a: ModelTier, b: ModelTier): ModelTier {
 }
 
 /**
- * Ordered allowlist per tier. First usable entry wins.
+ * Ordered allowlist per tier. First usable entry wins. These are the *defaults*:
+ * `TASK_ROUTER_TIERS` overrides them at load time (see parseTierModels), because
+ * whether an id exists is a property of your model catalogue, not of the router.
  *
- * Deliberately collapsed to two models on this machine:
+ * Deliberately collapsed to two models here:
  *   - fast_cheap           -> deepseek/deepseek-v4-flash
  *   - balanced + frontier  -> deepseek/deepseek-v4-pro
  *
@@ -83,10 +92,10 @@ function maxTier(a: ModelTier, b: ModelTier): ModelTier {
  * at least frontier" is what guarantees a security prompt never lands on the flash
  * model, even though the model it lands on is the same one balanced uses.
  *
- * To widen the rotation again, append entries here; entries that do not resolve
- * (or have no auth) are skipped at call time, never guessed at.
+ * To widen the rotation, append entries here or set `TASK_ROUTER_TIERS`; entries
+ * that do not resolve (or have no auth) are skipped at call time, never guessed at.
  */
-export const TIER_MODELS: Record<RoutableTier, ModelRef[]> = {
+export const TIER_MODELS: TierModels = {
   fast_cheap: [
     { provider: "deepseek", modelId: "deepseek-v4-flash" },
   ],
@@ -147,6 +156,70 @@ export function routableTier(tier: ModelTier): tier is RoutableTier {
   return tier !== "ask_human";
 }
 
+function isRoutableTier(key: string): key is RoutableTier {
+  return (ROUTABLE_TIERS as readonly string[]).includes(key);
+}
+
+/**
+ * Parse `TASK_ROUTER_TIERS`, the env override for the tier -> allowlist table.
+ *
+ * JSON object, partially or fully specified; omitted tiers keep their default:
+ *   {"fast_cheap":["anthropic/claude-haiku-4-5"],"balanced":["anthropic/claude-sonnet-4-5"]}
+ *
+ * This exists because the shipped defaults are one machine's catalogue: model ids
+ * are a property of *your* `pi --list-models`, not of the router. Everything here
+ * is validated up front and reported as one actionable error, because a typo that
+ * silently resolves nothing turns into a failed route on every prompt.
+ */
+export function parseTierModels(raw: string | undefined): { tiers: TierModels } | { error: string } {
+  if (raw === undefined || raw.trim() === "") return { tiers: TIER_MODELS };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return { error: `TASK_ROUTER_TIERS is not valid JSON (${error instanceof Error ? error.message : String(error)})` };
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { error: 'TASK_ROUTER_TIERS must be a JSON object, e.g. {"fast_cheap":["provider/modelId"]}' };
+  }
+
+  const tiers: TierModels = {
+    fast_cheap: [...TIER_MODELS.fast_cheap],
+    balanced: [...TIER_MODELS.balanced],
+    frontier: [...TIER_MODELS.frontier],
+  };
+
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!isRoutableTier(key)) {
+      return { error: `TASK_ROUTER_TIERS has unknown tier "${key}" (expected ${ROUTABLE_TIERS.join(", ")})` };
+    }
+    if (!Array.isArray(value)) {
+      return { error: `TASK_ROUTER_TIERS.${key} must be an array of "provider/modelId" strings` };
+    }
+    if (value.length === 0) {
+      return { error: `TASK_ROUTER_TIERS.${key} is empty; omit the key instead to keep the default` };
+    }
+
+    const refs: ModelRef[] = [];
+    for (const [index, entry] of value.entries()) {
+      if (typeof entry !== "string") {
+        return { error: `TASK_ROUTER_TIERS.${key}[${index}] must be a "provider/modelId" string` };
+      }
+      const ref = entry.trim();
+      const slash = ref.indexOf("/");
+      if (slash < 1 || slash === ref.length - 1 || /\s/.test(ref)) {
+        return { error: `TASK_ROUTER_TIERS.${key}[${index}] must look like "provider/modelId" (got "${ref}")` };
+      }
+      refs.push({ provider: ref.slice(0, slash), modelId: ref.slice(slash + 1) });
+    }
+    tiers[key] = refs;
+  }
+
+  return { tiers };
+}
+
 export function formatRef(ref: ModelRef): string {
   return `${ref.provider}/${ref.modelId}`;
 }
@@ -163,7 +236,11 @@ export const MODEL_PRICE_RANK: Record<string, number> = {
   "deepseek/deepseek-v4-pro": 1,
 };
 
-interface ModelHandle {
+/**
+ * The minimum a model has to expose to be priced or resolved. Structural: the
+ * registry's real `Model` satisfies it, and so does a two-field test double.
+ */
+export interface ModelHandle {
   provider: string;
   id: string;
 }
@@ -187,15 +264,34 @@ export function isMoreExpensive(from: ModelHandle | undefined, to: ModelHandle):
   return toRank > priceRank(from);
 }
 
-export type ResolvedModel = NonNullable<ReturnType<ModelRegistry["find"]>>;
+/**
+ * The only two registry capabilities this module needs. Structural on purpose: the
+ * real `ModelRegistry` satisfies it, and a test can pass a two-method stub instead
+ * of faking eighteen methods.
+ */
+export interface ModelLookup<TModel extends ModelHandle> {
+  find(provider: string, modelId: string): TModel | undefined;
+  hasConfiguredAuth(model: TModel): boolean;
+}
 
 /**
  * First allowlist entry that exists in the registry and has usable auth.
  * Returns undefined when this machine cannot serve the tier at all; the caller
  * must then leave the current model untouched.
+ *
+ * Generic in the model type so the caller gets back whatever its own registry
+ * returns (index.ts needs the full `Model` for `pi.setModel`), while tests can
+ * work with a bare `{ provider, id }`.
+ *
+ * `tiers` is the effective table: `TIER_MODELS` by default, or the caller's
+ * `TASK_ROUTER_TIERS` override.
  */
-export function resolveTierModel(registry: ModelRegistry, tier: RoutableTier): ResolvedModel | undefined {
-  for (const ref of TIER_MODELS[tier]) {
+export function resolveTierModel<TModel extends ModelHandle>(
+  registry: ModelLookup<TModel>,
+  tier: RoutableTier,
+  tiers: TierModels = TIER_MODELS,
+): TModel | undefined {
+  for (const ref of tiers[tier]) {
     const model = registry.find(ref.provider, ref.modelId);
     if (!model) continue;
     if (!registry.hasConfiguredAuth(model)) continue;
