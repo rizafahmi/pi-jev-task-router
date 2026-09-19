@@ -19,6 +19,7 @@ No agent-gate, no per-tool routing, no Pi core changes.
   providers/jev.ts            HTTP client, response mapping, retries, cache
   providers/fake.ts           keyword heuristic + the fallback provider
   providers/types.ts          ClassifierProvider seam
+  providers/jev.test.ts       canned-response tests for the mapping
   fixtures.jsonl              17 expected-input/expected-tier cases
   README.md
 ```
@@ -193,6 +194,14 @@ classifier while it is off. The `/router`, `/router-check`, and `/router-config`
 commands keep working when disabled.
 
 ## Verify
+
+Pure mapping, no key and no network — canned Jev responses through
+`mapJevResponse`, using Node's built-in runner (Node 24 executes `.ts` directly,
+no dependencies, no config):
+
+```
+node --test
+```
 
 Offline, no key, no LLM cost — runs the heuristic + policy over the fixtures:
 
