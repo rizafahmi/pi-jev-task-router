@@ -11,10 +11,11 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mapJevResponse, normalizeApiKey } from "./jev.ts";
+import { errorForStatus, isJevAuthError, JevAuthError, mapJevResponse, normalizeApiKey } from "./jev.ts";
 import { NOUL_THRESHOLD } from "../policy.ts";
 
-/** One live-shaped response; `answers` entries are overridden per test. */function response(answers: Record<string, unknown> = {}) {
+/** One live-shaped response; `answers` entries are overridden per test. */
+function response(answers: Record<string, unknown> = {}) {
   return {
     model: "jev-1.13.0",
     usage: { input_tokens: 915, output_tokens: 12 },
@@ -141,4 +142,41 @@ test("a real key is trimmed and kept", () => {
   assert.equal(normalizeApiKey("sk-live-abc123"), "sk-live-abc123");
   assert.equal(normalizeApiKey("  sk-live-abc123  "), "sk-live-abc123");
   assert.equal(normalizeApiKey("\nsk-live-abc123\t"), "sk-live-abc123");
+});
+
+/**
+ * Auth failure vs transient failure. The router treats a rejected key as a setup
+ * error (it turns itself off), while a 5xx is retried and degraded per turn — so
+ * the classification has to be exact, and it lives in one pure function.
+ */
+
+test("401 and 403 are auth errors", () => {
+  for (const status of [401, 403]) {
+    const error = errorForStatus(status, "irrelevant");
+    assert.ok(isJevAuthError(error), `${status} should be an auth error`);
+    assert.equal((error as JevAuthError).status, status);
+    assert.match(error.message, /rejected the API key/);
+    assert.match(error.message, new RegExp(`HTTP ${status}`));
+  }
+});
+
+test("a retryable status is not an auth error", () => {
+  // 429 is the retry path; it must never disable the router.
+  assert.equal(isJevAuthError(errorForStatus(429, "slow down")), false);
+});
+
+test("other failures keep the status and body, and are not auth errors", () => {
+  const error = errorForStatus(500, "upstream exploded");
+  assert.equal(isJevAuthError(error), false);
+  assert.equal(error.name, "Error");
+  assert.match(error.message, /jev 500/);
+  assert.match(error.message, /upstream exploded/);
+});
+
+test("isJevAuthError rejects anything that is not one", () => {
+  assert.equal(isJevAuthError(new Error("nope")), false);
+  assert.equal(isJevAuthError(undefined), false);
+  assert.equal(isJevAuthError("403"), false);
+  // Not a duck type: an Error that merely mentions 403 must not disable routing.
+  assert.equal(isJevAuthError(new Error("jev 403: bad key")), false);
 });

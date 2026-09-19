@@ -42,7 +42,7 @@ import {
 } from "./policy.ts";
 import type { TierModels } from "./policy.ts";
 import { fakeProvider } from "./providers/fake.ts";
-import { createJevProvider, JEV_DEFAULT_BASE_URL, JEV_DEFAULT_MODEL, normalizeApiKey } from "./providers/jev.ts";
+import { createJevProvider, isJevAuthError, JEV_DEFAULT_BASE_URL, JEV_DEFAULT_MODEL, normalizeApiKey } from "./providers/jev.ts";
 import type { ClassifierProvider, ProviderOutcome } from "./providers/types.ts";
 
 /**
@@ -123,6 +123,32 @@ function resolveAgentDir(): string {
 }
 
 const DISABLED_MARKER = join(resolveAgentDir(), "pi-jev-task-router.disabled");
+
+/**
+ * The marker file is the toggle's source of truth, and its *content* is the
+ * reason: empty when the user turned routing off themselves, a sentence when the
+ * router turned itself off (Jev rejected the key), so a later `/reload` can still
+ * say why it is off rather than showing a bare "disabled".
+ */
+function readDisabledReason(): string | undefined {
+  if (!existsSync(DISABLED_MARKER)) return undefined;
+  try {
+    return readFileSync(DISABLED_MARKER, "utf8").trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Returns the failure message, or undefined when the marker was written. */
+function writeDisabledMarker(reason: string): string | undefined {
+  try {
+    mkdirSync(dirname(DISABLED_MARKER), { recursive: true });
+    writeFileSync(DISABLED_MARKER, reason, "utf8");
+    return undefined;
+  } catch (error) {
+    return String(error);
+  }
+}
 
 function readPositiveNumber(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -301,6 +327,9 @@ export default function taskRouter(pi: ExtensionAPI) {
   // The marker file is the source of truth for the on/off toggle: it survives
   // /reload and restarts, unlike an in-memory flag.
   let enabled = !existsSync(DISABLED_MARKER);
+  // Why it is off, when the router turned itself off rather than the user: read
+  // back from the marker so it survives a reload.
+  let disabledReason = readDisabledReason();
   let last: LastRoute | undefined;
   let alwaysAllow = false;
   // A misconfiguration is reported once per session instance; after that
@@ -308,12 +337,24 @@ export default function taskRouter(pi: ExtensionAPI) {
   let configurationReported = false;
   let tiersReported = false;
 
+  /**
+   * Turn routing off and record why — the same state `/task-router off` produces,
+   * so recovery is always `/task-router on`. A failed write still disables this
+   * session: stopping the wasted calls matters more than surviving a reload.
+   */
+  function disableWithReason(reason: string): void {
+    writeDisabledMarker(reason);
+    enabled = false;
+    disabledReason = reason || undefined;
+  }
+
   pi.on("session_start", async (_event, ctx) => {
     // The tier note only matters while routing is on: a disabled router is not asked
     // to route, so its tier table cannot be wrong in any way the user cares about.
     const tierNote = tierSelection.kind === "misconfigured" ? ` · tier table: ${tierSelection.reason}` : "";
+    const offNote = disabledReason ?? "use /task-router on to enable";
     const line = `task-router: ${
-      enabled ? selectionLabel(selection) : "disabled (use /task-router on to enable)"
+      enabled ? selectionLabel(selection) : `disabled - ${offNote}`
     }${enabled ? tierNote : ""}`;
 
     // No classifier or no usable tier table means the router is inert, which is an
@@ -390,6 +431,22 @@ export default function taskRouter(pi: ExtensionAPI) {
     try {
       outcome = await selection.provider.classify(prompt);
     } catch (error) {
+      // A rejected key is a setup error, not a slow service. Nothing retries it
+      // mid-session (the key is read once, at load), so routing turns itself off
+      // exactly the way /task-router off does and says why. Deliberately no
+      // heuristic fallback for this turn: the key is *set*, so the user asked for
+      // Jev, and quietly routing on keywords is not what they asked for.
+      if (isJevAuthError(error)) {
+        const reason = `${error.message} - fix TYPESAFE_API_KEY, then /task-router on to re-enable`;
+        disableWithReason(reason);
+        ctx.ui.notify(`router: ${reason}`, "error");
+        ctx.ui.setStatus("task-router", "off (jev key rejected)");
+        // Notifies are no-ops without a UI (pi's noOpUIContext), so a headless
+        // run would otherwise stop switching models without a word.
+        if (!ctx.hasUI) process.stderr.write(`task-router: disabled - ${reason}\n`);
+        return;
+      }
+
       if (source === "fake") {
         ctx.ui.notify(`router: classification failed - ${clip(String(error), 120)}`, "error");
         return;
@@ -493,7 +550,7 @@ export default function taskRouter(pi: ExtensionAPI) {
         "info",
       );
       ctx.ui.notify(
-        `  marker: ${enabled ? "enabled" : "disabled"} (${DISABLED_MARKER})`,
+        `  marker: ${enabled ? "enabled" : `disabled - ${disabledReason ?? "off by user"}`} (${DISABLED_MARKER})`,
         "info",
       );
 
@@ -531,28 +588,31 @@ export default function taskRouter(pi: ExtensionAPI) {
           return;
         }
         enabled = true;
+        disabledReason = undefined;
         alwaysAllow = false;
         ctx.ui.notify("task-router enabled", "info");
         return;
       }
 
       if (arg === "off") {
-        try {
-          mkdirSync(dirname(DISABLED_MARKER), { recursive: true });
-          writeFileSync(DISABLED_MARKER, "", "utf8");
-        } catch (error) {
-          ctx.ui.notify(`task-router: cannot write ${DISABLED_MARKER} (${String(error)})`, "error");
+        const failure = writeDisabledMarker("");
+        if (failure) {
+          ctx.ui.notify(`task-router: cannot write ${DISABLED_MARKER} (${failure})`, "error");
           return;
         }
         enabled = false;
+        disabledReason = undefined;
         ctx.ui.notify("task-router disabled - model will stay wherever you leave it", "warning");
         return;
       }
 
       if (arg === "") {
+        // A recorded reason means the router turned itself off, not the user, so
+        // say what happened rather than the generic "turn it back on".
+        const offNote = disabledReason ?? "/task-router on to enable";
         ctx.ui.notify(
-          `task-router is ${enabled ? `enabled (${selectionLabel(selection)})` : "disabled - /task-router on to enable"}`,
-          "info",
+          `task-router is ${enabled ? `enabled (${selectionLabel(selection)})` : `disabled - ${offNote}`}`,
+          !enabled && disabledReason ? "warning" : "info",
         );
         return;
       }

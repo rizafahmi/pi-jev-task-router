@@ -57,6 +57,38 @@ export function normalizeApiKey(raw: string | undefined): string | undefined {
 }
 
 /**
+ * The API rejected the credential: the key is wrong, expired, or revoked.
+ *
+ * Deliberately distinct from a transient failure. A 401/403 will not fix itself
+ * mid-session (the key is read once, at load), so retrying it per prompt only buys
+ * a round trip and a repeat warning. The router treats one of these as a setup
+ * error and turns itself off.
+ */
+export class JevAuthError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`jev rejected the API key (HTTP ${status})`);
+    this.name = "JevAuthError";
+    this.status = status;
+  }
+}
+
+export function isJevAuthError(error: unknown): error is JevAuthError {
+  return error instanceof JevAuthError;
+}
+
+/**
+ * Map a non-ok response to the error to throw. Auth statuses get their own type so
+ * the caller can tell "your key is wrong" from "the service is having a moment";
+ * everything else keeps the status and a slice of the body for the notify.
+ */
+export function errorForStatus(status: number, body: string): Error {
+  if (status === 401 || status === 403) return new JevAuthError(status);
+  return new Error(`jev ${status}: ${body}`);
+}
+
+/**
  * Pinned, not `jev-latest`: the README's latency, cost and confidence figures were
  * measured against 1.13.0, and an alias that moves would make them quietly wrong.
  * Set TASK_ROUTER_JEV_MODEL=jev-latest to follow the alias on purpose.
@@ -248,10 +280,11 @@ export function createJevProvider(config: JevConfig): ClassifierProvider {
         }
 
         const body = (await response.text()).slice(0, 300);
-        lastError = new Error(`jev ${response.status}: ${body}`);
+        lastError = errorForStatus(response.status, body);
 
         // The docs name 429 and 529 as the two retryable statuses, and say to
-        // honour retry-after when it is present.
+        // honour retry-after when it is present. Auth statuses are already
+        // non-retryable here, so they surface on the first attempt.
         const retryable = response.status === 429 || response.status === 529;
         if (!retryable || attempt === 2) throw lastError;
 

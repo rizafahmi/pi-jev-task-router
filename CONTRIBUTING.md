@@ -83,6 +83,12 @@ Things that cost time to rediscover. Verified against `@earendil-works/pi-coding
 - `TYPESAFE_API_KEY` is normalised at load (`normalizeApiKey`): absent and blank are one state.
   A blank key used to be read as present, which selected Jev, 403'd on every call, and reported
   the classifier as "jev" while degrading on every prompt.
+- Auth failure and transient failure are different outcomes, so they are different types:
+  `errorForStatus` returns `JevAuthError` for 401/403 and a generic `Error` otherwise. A rejected
+  key **disables** the router (marker written with the reason); a 5xx, timeout or exhausted retry
+  degrades to the heuristic for that turn only. Keep that split — degrading on a bad key silently
+  routes on keywords when the user asked for a classifier, and disabling on a brief 500 makes a
+  hiccup look like a misconfiguration.
 - The on/off marker lives in Pi's agent dir, not next to the code: `PI_CODING_AGENT_DIR`
   (tilde-expanded) or `~/.pi/agent`. A marker inside an installed package would be wiped
   when Pi reconciles the checkout. This mirrors Pi's own `getAgentDir()` deliberately, to keep

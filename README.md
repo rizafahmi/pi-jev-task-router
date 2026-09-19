@@ -72,7 +72,7 @@ Jev call fails, it degrades to a keyword heuristic and says so.
 | 📐 **Policy** | `policy.ts` owns the kind → tier table, the thresholds, and the default model ids (overridable with `TASK_ROUTER_TIERS`) |
 | 💸 **Rotation** | Default two-model rotation: `deepseek-v4-flash` (fast_cheap) and `deepseek-v4-pro` (balanced + frontier) — override with `TASK_ROUTER_TIERS` |
 | 🛑 **Gate** | TUI dialog before any switch to a *more expensive* model |
-| 🔌 **Toggle** | `/task-router on \| off`, persisted to a marker file, survives `/reload` |
+| 🔌 **Toggle** | `/task-router on \| off`, persisted to a marker file, survives `/reload`. The router also turns itself off when Jev rejects the API key |
 | 🧪 **Tests** | `node --test` · 23 tests · no key, no network, and no install needed to run them |
 
 ---
@@ -235,8 +235,16 @@ it wrong is never silent:
 |---|---|
 | no key, `TASK_ROUTER_PROVIDER=auto` | Session start says `heuristic (TYPESAFE_API_KEY is unset)`. Routing still works, on the heuristic |
 | no key, `TASK_ROUTER_PROVIDER=jev` | Misconfiguration: the router refuses to route, the footer shows `inert - see /router-config`, and the first prompt notifies an error |
-| the key is set but rejected upstream | The turn notifies `jev unavailable, using heuristics - <status>` and routes on the heuristic |
 | a blank value (`TYPESAFE_API_KEY= `) | Treated as missing, not as a bad key — no wasted API call |
+| the key is set but **rejected** (HTTP 401/403) | **Routing turns itself off**, the same as `/task-router off`: `router: jev rejected the API key (HTTP 403) - fix TYPESAFE_API_KEY, then /task-router on to re-enable`. The footer shows `off (jev key rejected)`. Deliberately no heuristic fallback — the key is set, so Jev is what you asked for |
+| a transient failure (5xx, timeout, retries exhausted) | That turn warns `jev unavailable, using heuristics - <reason>` and routes on the heuristic. Assumed recoverable, so it tries again next prompt instead of disabling |
+
+The rejected-key case is the one that changes state, and it is deliberate: the key is read once
+at load, so a key the API refuses will not start working mid-session. Rather than pay a round
+trip and print a warning on every prompt — or quietly route on keywords when you configured a
+classifier — the router stops and tells you how to resume. The reason is written **into** the
+marker file, so a `/reload` or a later session still explains why it is off instead of showing a
+bare `disabled`.
 
 `/router-config` (masked key + resolved classifier) and `/task-router` (enabled, with which
 classifier) answer the question at any time, whether or not you saw the startup line. Only the
@@ -300,7 +308,7 @@ guessing.
 | command | what it does |
 |---|---|
 | `/router` | Last decision in this session: prompt, kind/complexity/tier, confidence, repo-map flag, provenance |
-| `/router-config` | Active classifier, masked key, base URL, model, thresholds, confirm-gate state, marker path, tier table origin, resolved models per tier, effective allowlists |
+| `/router-config` | Active classifier, masked key, base URL, model, thresholds, confirm-gate state, marker path and why it is off, tier table origin, resolved models per tier, effective allowlists |
 | `/router-check` | Run `fixtures.jsonl` through classify + `applyPolicy` — offline, no key, no LLM cost |
 | `/router-check --jev` | Same fixtures against **live** Jev; asserts tier, lists kind/complexity disagreements as notes |
 | `/router-check --fake` | Force the heuristic run even when the configured classifier cannot start |
@@ -343,6 +351,10 @@ complexity only for escalation — complexity uncertainty never vetoes a route.
 ### Failure and retry behaviour
 
 - 429 / 529 retry with `retry-after` (capped at 1 s), up to three attempts.
+- **401 / 403 do not retry, and do not fall back.** The key is rejected, so the router turns
+  itself off with the reason in the marker file — see
+  [Where a missing key is reported](#where-a-missing-key-is-reported). No heuristic route for
+  that turn: a set key means Jev is what you asked for.
 - Any other error, or a timeout, throws; the router catches it, notifies a warning,
   and routes with the heuristic instead. A degraded turn is always visible.
 - Classification is not cancellable. `before_agent_start` runs before the turn
@@ -442,6 +454,11 @@ honoured), **not** in the package directory — installed packages are managed b
 git package is reset and cleaned when its pinned ref changes, so a marker written inside it
 would silently disappear on `pi update --extensions`. If the file cannot be written, the
 toggle reports the error instead of throwing.
+
+The router also turns **itself** off when Jev rejects the API key — writing the same marker, with
+the reason as its content, so `/reload` and later sessions still say why. That is the only
+automatic `off`: everything else degrades to the heuristic. `/task-router on` is always the way
+back.
 
 ---
 
