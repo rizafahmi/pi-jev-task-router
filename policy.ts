@@ -173,9 +173,18 @@ function priceRank(model: ModelHandle | undefined): number {
   return MODEL_PRICE_RANK[`${model.provider}/${model.id}`] ?? 0;
 }
 
-/** True when the target is pricier than the current model, and both ranks are known. */
+/**
+ * True when the target is pricier than the current model.
+ *
+ * An unknown target fails closed: with no price entry it cannot be proven cheap,
+ * so the switch is treated as expensive and confirmed. This guards against
+ * widening TIER_MODELS without adding the matching MODEL_PRICE_RANK entry — the
+ * gate would otherwise silently skip confirmation for the new model.
+ */
 export function isMoreExpensive(from: ModelHandle | undefined, to: ModelHandle): boolean {
-  return priceRank(to) > priceRank(from);
+  const toRank = MODEL_PRICE_RANK[`${to.provider}/${to.id}`];
+  if (toRank === undefined) return true;
+  return toRank > priceRank(from);
 }
 
 export type ResolvedModel = NonNullable<ReturnType<ModelRegistry["find"]>>;
