@@ -1,0 +1,30 @@
+  ...
+# Subtest: 401 and 403 are auth errors
+ok 27 - 401 and 403 are auth errors
+  ---
+  duration_ms: 0.164881
+  ...
+# Subtest: a retryable status is not an auth error
+ok 28 - a retryable status is not an auth error
+  ---
+  duration_ms: 0.042617
+  ...
+# Subtest: other failures keep the status and body, and are not auth errors
+ok 29 - other failures keep the status and body, and are not auth errors
+  ---
+  duration_ms: 0.04876
+  ...
+# Subtest: isJevAuthError rejects anything that is not one
+ok 30 - isJevAuthError rejects anything that is not one
+  ---
+  duration_ms: 0.045946
+  ...
+1..30
+# tests 30
+# suites 0
+# pass 30
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 95.872449
