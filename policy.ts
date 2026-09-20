@@ -225,19 +225,7 @@ export function formatRef(ref: ModelRef): string {
 }
 
 /**
- * Price rank per model, used by the confirm gate to decide whether a switch is
- * "more expensive". With the current two-model rotation, flash is 0 and pro is 1.
- * An absent/unknown model ranks as cheapest (0), so a switch to the expensive
- * model is confirmed and a switch to the cheap one never is. To widen the
- * rotation, add entries here in ascending price order.
- */
-export const MODEL_PRICE_RANK: Record<string, number> = {
-  "deepseek/deepseek-v4-flash": 0,
-  "deepseek/deepseek-v4-pro": 1,
-};
-
-/**
- * The minimum a model has to expose to be priced or resolved. Structural: the
+ * The minimum a model has to expose to be ranked or resolved. Structural: the
  * registry's real `Model` satisfies it, and so does a two-field test double.
  */
 export interface ModelHandle {
@@ -245,23 +233,46 @@ export interface ModelHandle {
   id: string;
 }
 
-function priceRank(model: ModelHandle | undefined): number {
-  if (!model) return 0;
-  return MODEL_PRICE_RANK[`${model.provider}/${model.id}`] ?? 0;
+/** The cheapest tier whose allowlist contains this model, if any. */
+function tierOf(model: ModelHandle, tiers: TierModels): RoutableTier | undefined {
+  const key = `${model.provider}/${model.id}`;
+  return ROUTABLE_TIERS.find((tier) => tiers[tier].some((ref) => formatRef(ref) === key));
 }
 
 /**
- * True when the target is pricier than the current model.
+ * True when the target sits in a higher tier than the current model.
  *
- * An unknown target fails closed: with no price entry it cannot be proven cheap,
- * so the switch is treated as expensive and confirmed. This guards against
- * widening TIER_MODELS without adding the matching MODEL_PRICE_RANK entry — the
- * gate would otherwise silently skip confirmation for the new model.
+ * Cost order is read off the tier table rather than a separate price table. That is
+ * the point: `ROUTABLE_TIERS` is already declared in ascending capability, and a
+ * second table keyed by `provider/modelId` made the *gateway* part of a model's
+ * identity. Same model, different reseller, and the old table had no entry — it
+ * failed closed, so the gate prompted on an upgrade it should have recognised, and
+ * the only fix was a code change. Deriving the order means an override ranks
+ * correctly with nothing extra to keep in sync.
+ *
+ * Two consequences worth knowing:
+ *
+ *   - models in the *same* tier are not a price step, so the tier table is also the
+ *     cost knob: a model that costs more than its tier peers wants its own tier,
+ *     not a rank row;
+ *   - a target in no tier at all still fails closed. It cannot be proven cheap, so
+ *     the switch is confirmed rather than waved through, which is what stops a
+ *     widened rotation from silently skipping the gate.
+ *
+ * A current model in no tier — you switched by hand — ranks as the cheapest tier.
+ * There is no evidence it was expensive, and the target's tier is what justifies
+ * asking.
  */
-export function isMoreExpensive(from: ModelHandle | undefined, to: ModelHandle): boolean {
-  const toRank = MODEL_PRICE_RANK[`${to.provider}/${to.id}`];
-  if (toRank === undefined) return true;
-  return toRank > priceRank(from);
+export function isMoreExpensive(
+  from: ModelHandle | undefined,
+  to: ModelHandle,
+  tiers: TierModels = TIER_MODELS,
+): boolean {
+  const toTier = tierOf(to, tiers);
+  if (toTier === undefined) return true;
+
+  const fromRank = from ? TIER_RANK[tierOf(from, tiers) ?? "fast_cheap"] : TIER_RANK.fast_cheap;
+  return TIER_RANK[toTier] > fromRank;
 }
 
 /**

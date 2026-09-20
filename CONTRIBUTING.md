@@ -68,7 +68,7 @@ Three deliberate single places. Change one of these before you change any surrou
 | what | where |
 |---|---|
 | the four questions Jev is asked, and their option descriptions | `providers/jev-questions.ts` |
-| thresholds, `BASE_TIER`, the default tier → model allowlist, price ranks | `policy.ts` |
+| thresholds, `BASE_TIER`, the default tier → model allowlist, tier order (= cost order) | `policy.ts` |
 | which models your machine uses, without editing code | `TASK_ROUTER_TIERS` env var (`parseTierModels`) |
 | expected kind/complexity/tier per prompt | `fixtures.jsonl` |
 
@@ -139,8 +139,9 @@ Things that cost time to rediscover. Verified against `@earendil-works/pi-coding
   needed, say so in the PR description first.
 - Keep rejection reasons user-facing and actionable: they are shown in a notify, not a log.
   Say which key or env var is wrong and what a valid value looks like.
-- Add a test for any change to `applyPolicy`, `parseTierModels`, price ordering, or the Jev
-  response mapping. Those are the parts that can quietly route badly.
+- Add a test for any change to `applyPolicy`, `parseTierModels`, cost ordering
+  (`isMoreExpensive`), or the Jev response mapping. Those are the parts that can quietly route
+  badly.
 
 ## Releasing
 

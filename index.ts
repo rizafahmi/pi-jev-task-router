@@ -280,9 +280,12 @@ async function confirmModelSwitch(
   ctx: ExtensionContext,
   decision: Decision,
   target: { provider: string; id: string },
+  tiers: TierModels,
 ): Promise<ConfirmResult> {
   if (ctx.mode !== "tui") return "switch";
-  if (!isMoreExpensive(ctx.model, target)) return "switch";
+  // Cost order comes from the effective tier table, so an override decides both what
+  // the tiers resolve to and which of them count as an upgrade.
+  if (!isMoreExpensive(ctx.model, target, tiers)) return "switch";
 
   const from = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "none";
   const to = `${target.provider}/${target.id}`;
@@ -490,7 +493,7 @@ export default function taskRouter(pi: ExtensionAPI) {
     }
 
     if (!alwaysAllow) {
-      const confirm = await confirmModelSwitch(ctx, decision, model);
+      const confirm = await confirmModelSwitch(ctx, decision, model, tierSelection.tiers);
       if (confirm === "declined") {
         ctx.ui.notify(`router: model change declined - staying on ${active ?? "none"}`, "warning");
         last = { prompt, decision, outcome: `declined ${target}`, source, detail: outcome.detail };

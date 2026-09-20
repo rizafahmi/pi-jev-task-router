@@ -1,10 +1,10 @@
 /**
- * task-router — tests for the confirm gate's price ordering.
+ * task-router — tests for the confirm gate's cost ordering.
  *
- * isMoreExpensive decides whether the TUI asks before a model switch. The one
- * property that must not regress: an unknown model is never treated as cheap,
- * because a widened TIER_MODELS without a matching MODEL_PRICE_RANK entry would
- * otherwise silently skip confirmation.
+ * isMoreExpensive decides whether the TUI asks before a model switch. Cost order is
+ * derived from the tier table, so the property that must not regress is the
+ * fail-closed one: a target in no tier is never treated as cheap, because a widened
+ * rotation would otherwise silently skip confirmation.
  *
  *   node --test
  */
@@ -13,7 +13,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   isMoreExpensive,
-  MODEL_PRICE_RANK,
   parseTierModels,
   resolveTierModel,
   TIER_MODELS,
@@ -47,15 +46,56 @@ test("an unknown target model always asks (fails closed)", () => {
   assert.equal(isMoreExpensive(undefined, UNKNOWN), true);
 });
 
-test("every allowlisted model has a price rank", () => {
-  // Guards the invariant behind the fail-closed gate: TIER_MODELS and
-  // MODEL_PRICE_RANK must not drift apart.
-  for (const tier of Object.values(TIER_MODELS)) {
-    for (const ref of tier) {
-      const key = `${ref.provider}/${ref.modelId}`;
-      assert.ok(key in MODEL_PRICE_RANK, `${key} is missing from MODEL_PRICE_RANK`);
-    }
-  }
+test("an override ranks by tier, with no second table to keep in sync", () => {
+  // The case that motivated deriving the order: point the rotation at a catalogue the
+  // shipped defaults know nothing about.
+  const custom = tiers(
+    JSON.stringify({
+      fast_cheap: ["anthropic/claude-haiku-4-5"],
+      balanced: ["anthropic/claude-sonnet-4-5"],
+      frontier: ["anthropic/claude-opus-4-1"],
+    }),
+  );
+  const haiku = { provider: "anthropic", id: "claude-haiku-4-5" };
+  const sonnet = { provider: "anthropic", id: "claude-sonnet-4-5" };
+  const opus = { provider: "anthropic", id: "claude-opus-4-1" };
+
+  assert.equal(isMoreExpensive(haiku, sonnet, custom), true);
+  assert.equal(isMoreExpensive(sonnet, haiku, custom), false);
+  assert.equal(isMoreExpensive(sonnet, opus, custom), true);
+  assert.equal(isMoreExpensive(undefined, haiku, custom), false);
+  // Still fails closed for a model this table does not list.
+  assert.equal(isMoreExpensive(haiku, UNKNOWN, custom), true);
+});
+
+test("the same model behind a different gateway ranks the same", () => {
+  // sumopod/deepseek-v4-flash is the same model as deepseek/deepseek-v4-flash. The
+  // gateway is not part of the model's identity, so a reseller must not change the
+  // gate's answer — which it did when the order came from a provider-keyed table.
+  const viaGateway = tiers(
+    JSON.stringify({
+      fast_cheap: ["sumopod/deepseek-v4-flash"],
+      balanced: ["sumopod/deepseek-v4-pro"],
+      frontier: ["sumopod/deepseek-v4-pro"],
+    }),
+  );
+  const gatewayFlash = { provider: "sumopod", id: "deepseek-v4-flash" };
+  const gatewayPro = { provider: "sumopod", id: "deepseek-v4-pro" };
+
+  assert.equal(isMoreExpensive(gatewayFlash, gatewayPro, viaGateway), true);
+  assert.equal(isMoreExpensive(gatewayPro, gatewayFlash, viaGateway), false);
+});
+
+test("two models in the same tier are not a price step", () => {
+  // The tier table is the cost knob: peers inside one tier never prompt.
+  const twoInBalanced = tiers(
+    JSON.stringify({ balanced: ["anthropic/claude-sonnet-4-5", "openai/gpt-5"] }),
+  );
+  const sonnet = { provider: "anthropic", id: "claude-sonnet-4-5" };
+  const gpt = { provider: "openai", id: "gpt-5" };
+
+  assert.equal(isMoreExpensive(sonnet, gpt, twoInBalanced), false);
+  assert.equal(isMoreExpensive(gpt, sonnet, twoInBalanced), false);
 });
 
 /**

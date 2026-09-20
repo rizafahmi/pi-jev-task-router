@@ -262,11 +262,14 @@ A **tier** (`fast_cheap` · `balanced` · `frontier`) is what the policy reasons
 **an example taken from one model catalogue**, not a recommendation, so point it at models you
 actually have before trusting a route:
 
-| tier | default model | price rank |
+| tier | default model | cost order |
 |---|---|---|
-| `fast_cheap` | `deepseek/deepseek-v4-flash` | 0 |
+| `fast_cheap` | `deepseek/deepseek-v4-flash` | 0 — cheapest |
 | `balanced` | `deepseek/deepseek-v4-pro` | 1 |
-| `frontier` | `deepseek/deepseek-v4-pro` | 1 |
+| `frontier` | `deepseek/deepseek-v4-pro` | 2 |
+
+The cost order column is not a separate setting to maintain: it **is** the tier order, which
+is why an override below needs no matching price entry.
 
 Those defaults are **an example from one catalogue**, not a recommendation. Override them
 without editing code by setting `TASK_ROUTER_TIERS` — a JSON object, partially or fully
@@ -296,10 +299,11 @@ The rotation here is deliberately two models, with `frontier` mapping to the sam
 security prompt never lands on the flash model, and the tier distinction still drives the
 confirm gate and the footer, even when the model behind two tiers is the same.
 
-Regardless of the tier, **`TASK_ROUTER_TIERS` never affects price ordering**:
-`MODEL_PRICE_RANK` in `policy.ts` decides whether a switch is "more expensive". A model it has
-no entry for is treated as expensive, so the confirmation gate fails closed rather than
-guessing.
+Cost order follows the tier table, so **overriding the tiers overrides the cost order too** —
+there is no second table to keep in sync. That matters most when one model is served by
+several gateways: `sumopod/deepseek-v4-flash` and `deepseek/deepseek-v4-flash` are the same
+model, and the gate ranks them the same. A target in **no** tier is treated as expensive, so
+the confirmation gate still fails closed rather than guessing.
 
 ---
 
@@ -422,17 +426,18 @@ automatic.
 
 - **Only in the TUI** (`ctx.mode === "tui"`). `pi -p`, `--mode json`, and RPC never
   block on a dialog.
-- **Only when the target is pricier** than the current model. With the two-model
-  rotation that is `deepseek-v4-flash → deepseek-v4-pro`; downgrades and no-op
-  switches never prompt. A target with no `MODEL_PRICE_RANK` entry is treated as
-  expensive (confirmed), so widening the rotation (`TIER_MODELS` or `TASK_ROUTER_TIERS`)
-  without adding the matching price entry still asks rather than silently skipping the gate.
+- **Only when the target is in a higher tier** than the current model. With the two-model
+  rotation that is `deepseek-v4-flash → deepseek-v4-pro`; downgrades, same-tier moves and
+  no-op switches never prompt. Two models in one tier are peers, so a model that costs more
+  than its tier mates wants its own tier. A target in no tier at all is treated as expensive
+  (confirmed), so a widened rotation still asks rather than silently skipping the gate.
 - **Dialog options:** `Switch`, `Always allow`, `Stay`. Timeout is 30 s; a timeout or
   Esc counts as `Stay` (the model does not change).
 - **`Always allow`** is per session instance: it suppresses the dialog for the rest of
   this session, and resets on `/reload` or a new session.
 - `/router-config` shows whether the gate is on or has been always-allowed.
-- Price ordering lives in `MODEL_PRICE_RANK` in `policy.ts`, next to `TIER_MODELS`.
+- Cost ordering is the tier order from `ROUTABLE_TIERS` in `policy.ts` — there is no separate
+  price table to keep in sync.
 
 ---
 
@@ -616,7 +621,7 @@ task-router/                    (installed as pi-jev-task-router)
   index.ts                      extension entry: before_agent_start hook + /router, /router-check, /router-config, /task-router
   schema.ts                     task_kind / complexity / model_tier types; the Decision contract
   policy.ts                     BASE_TIER, thresholds, applyPolicy, resolveTierModel,
-                                TIER_MODELS + MODEL_PRICE_RANK (the defaults), parseTierModels
+                                TIER_MODELS (the defaults), isMoreExpensive, parseTierModels
   policy.test.ts                price-rank, confirm-gate and TASK_ROUTER_TIERS tests
   fixtures.jsonl                17 expected-kind / complexity / tier cases
   README.md
