@@ -6,7 +6,7 @@
 
 Classify the prompt → pick a model tier → `pi.setModel()` → tell you where it landed.
 
-Package `pi-jev-task-router` — `pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.0`
+Package `pi-jev-task-router` — `pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.1`
 
 [![Pi extension](https://img.shields.io/badge/Pi-extension-6E56CF?style=flat-square)](https://github.com/earendil-works/pi-coding-agent)
 ![routing pattern B](https://img.shields.io/badge/routing-pattern_B-0EA5E9?style=flat-square)
@@ -15,7 +15,7 @@ Package `pi-jev-task-router` — `pi install git:github.com/rizafahmi/pi-jev-tas
 ![runtime deps 0](https://img.shields.io/badge/runtime_deps-0-brightgreen?style=flat-square)
 [![CI](https://github.com/rizafahmi/pi-jev-task-router/actions/workflows/ci.yml/badge.svg)](https://github.com/rizafahmi/pi-jev-task-router/actions/workflows/ci.yml)
 ![Node >= 22.19](https://img.shields.io/badge/Node-%E2%89%A5%2022.19-339933?style=flat-square&logo=nodedotjs&logoColor=white)
-![pi-coding-agent 0.85.1](https://img.shields.io/badge/pi--coding--agent-0.85.1-blue?style=flat-square)
+![pi-coding-agent 0.86.0](https://img.shields.io/badge/pi--coding--agent-0.86.0-blue?style=flat-square)
 [![license MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
 </div>
@@ -73,7 +73,7 @@ Jev call fails, it degrades to a keyword heuristic and says so.
 | 💸 **Rotation** | Default two-model rotation: `deepseek-v4-flash` (fast_cheap) and `deepseek-v4-pro` (balanced + frontier) — override with `TASK_ROUTER_TIERS` |
 | 🛑 **Gate** | TUI dialog before any switch to a *more expensive* model |
 | 🔌 **Toggle** | `/task-router on \| off`, persisted to a marker file, survives `/reload`. The router also turns itself off when Jev rejects the API key |
-| 🧪 **Tests** | `node --test` · 23 tests · no key, no network, and no install needed to run them |
+| 🧪 **Tests** | `node --test` · 30 tests · no key, no network, and no install needed to run them |
 
 ---
 
@@ -117,7 +117,7 @@ ordering rules. The guards, the confirmation gate and `setModel` live in `index.
 ## 🚀 Quick start
 
 ```sh
-pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.0   # 1. install
+pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.1   # 1. install
 export TYPESAFE_API_KEY=sk-...                                  # 2. optional, enables Jev
 ```
 
@@ -154,7 +154,7 @@ instead and says so in the notify. No model switch at all? Read this box first.
 ### As a Pi package (recommended)
 
 ```sh
-pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.0
+pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.1
 ```
 
 `pi install` clones the package to
@@ -466,7 +466,7 @@ back.
 
 **Pure mapping, no key and no network** — canned Jev responses through
 `mapJevResponse`, using Node's built-in runner (`.ts` runs directly from Node 22.18,
-no toolchain, no `npm install`). 23 tests across `policy.test.ts` and
+no toolchain, no `npm install`). 30 tests across `policy.test.ts` and
 `providers/jev.test.ts`:
 
 ```sh
@@ -651,7 +651,7 @@ Where things end up once installed:
 
 | requirement | why |
 |---|---|
-| `@earendil-works/pi-coding-agent` **0.85.1** (or compatible) | The extension is written against this build's `setModel`, `modelRegistry`, and `before_agent_start` semantics |
+| `@earendil-works/pi-coding-agent` **0.86.0** (or compatible) | The extension is written against this build's `setModel`, `modelRegistry`, and `before_agent_start` semantics |
 | **Node ≥ 22.19** | Pi's own floor. `node --test` runs `.ts` directly from Node 22.18, so the tests need no toolchain and no `npm install`. CI runs Node 24 |
 | `TYPESAFE_API_KEY` | Optional. Without it the heuristic routes, and every degraded turn says so |
 | A model that exists in `pi --list-models` with auth | Each tier's allowlist is validated at call time; unresolvable entries are skipped. Point the tiers at your own ids with [`TASK_ROUTER_TIERS`](#tier-models) |
