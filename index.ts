@@ -527,54 +527,44 @@ export default function taskRouter(pi: ExtensionAPI) {
       }
       const d = last.decision;
       ctx.ui.notify(
-        `router: "${clip(last.prompt)}" -> ${describe(d)} | conf ${(d.confidence ?? 0).toFixed(2)} | repo_map ${
-          d.needs_repo_map ? "yes" : "no"
-        } | ${last.outcome}`,
+        [
+          `router: "${clip(last.prompt)}" -> ${describe(d)} | conf ${(d.confidence ?? 0).toFixed(2)} | repo_map ${
+            d.needs_repo_map ? "yes" : "no"
+          } | ${last.outcome}`,
+          `  via ${last.source} · ${last.detail}`,
+        ].join("\n"),
         "info",
       );
-      ctx.ui.notify(`  via ${last.source} · ${last.detail}`, "info");
     },
   });
 
   pi.registerCommand("router-config", {
     description: "Show the active classifier, credentials and thresholds",
     handler: async (_args, ctx) => {
-      ctx.ui.notify(`router: classifier = ${selectionLabel(selection)}`, "info");
-      ctx.ui.notify(
-        `  TYPESAFE_API_KEY ${maskSecret(CONFIG.apiKey)} · base ${CONFIG.baseUrl} · model ${CONFIG.model}`,
-        "info",
-      );
-      ctx.ui.notify(
-        `  floors: unsure < ${UNSURE_FLOOR} -> ask · confidence < ${CONFIDENCE_FLOOR} -> balanced · noul >= ${NOUL_THRESHOLD}`,
-        "info",
-      );
-      ctx.ui.notify(
-        `  confirm gate: ${alwaysAllow ? "off (always-allow this session)" : "on (expensive switches only, TUI, 30s timeout)"}`,
-        "info",
-      );
-      ctx.ui.notify(
-        `  marker: ${enabled ? "enabled" : `disabled - ${disabledReason ?? "off by user"}`} (${DISABLED_MARKER})`,
-        "info",
-      );
-
-      if (tierSelection.kind === "misconfigured") {
-        ctx.ui.notify(`  tier table: UNUSABLE - ${tierSelection.reason}`, "error");
-      }
-
+      // One notify, not one per line: pi's TUI treats "info" notifications as a
+      // replaceable status line, so consecutive notifies overwrite each other and
+      // only the last line survives. ("error"/"warning" append, which is why the
+      // misconfigured tier table used to be the one thing that *did* show up.)
       const tiers = tierSelection.kind === "ready" ? tierSelection.tiers : TIER_MODELS;
       const resolved = ROUTABLE_TIERS.map((tier) => {
         const model = resolveTierModel(ctx.modelRegistry, tier, tiers);
         return `${tier}=${model ? `${model.provider}/${model.id}` : "UNRESOLVED"}`;
       }).join(" · ");
-      ctx.ui.notify(
-        `  tier table: ${tierSelection.kind === "ready" ? tierSelection.label : "defaults (the override is unusable)"}`,
-        "info",
-      );
-      ctx.ui.notify(`  resolved now: ${resolved}`, "info");
-      ctx.ui.notify(
+      const tierTableLine =
+        tierSelection.kind === "misconfigured"
+          ? `  tier table: UNUSABLE - ${tierSelection.reason}`
+          : `  tier table: ${tierSelection.label}`;
+      const report = [
+        `router: classifier = ${selectionLabel(selection)}`,
+        `  TYPESAFE_API_KEY ${maskSecret(CONFIG.apiKey)} · base ${CONFIG.baseUrl} · model ${CONFIG.model}`,
+        `  floors: unsure < ${UNSURE_FLOOR} -> ask · confidence < ${CONFIDENCE_FLOOR} -> balanced · noul >= ${NOUL_THRESHOLD}`,
+        `  confirm gate: ${alwaysAllow ? "off (always-allow this session)" : "on (expensive switches only, TUI, 30s timeout)"}`,
+        `  marker: ${enabled ? "enabled" : `disabled - ${disabledReason ?? "off by user"}`} (${DISABLED_MARKER})`,
+        tierTableLine,
+        `  resolved now: ${resolved}`,
         `  allowlists: ${ROUTABLE_TIERS.map((tier) => `${tier}[${tiers[tier].map(formatRef).join(",")}]`).join(" ")}`,
-        "info",
-      );
+      ].join("\n");
+      ctx.ui.notify(report, tierSelection.kind === "misconfigured" ? "error" : "info");
     },
   });
 
@@ -718,24 +708,17 @@ export default function taskRouter(pi: ExtensionAPI) {
       }
 
       const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
-      ctx.ui.notify(
+      const report = [
         `router-check: ${passed}/${fixtures.length} ${useJev ? "tiers" : "fixtures"} passed via ${label} in ${seconds}s`,
-        failures.length > 0 ? "warning" : "info",
-      );
+      ];
       if (useJev && failures.length > 0) {
-        ctx.ui.notify(
+        report.push(
           "  with --jev a tier mismatch means the question wording and the expectation disagree; read the probabilities before changing either",
-          "info",
         );
       }
-      for (const failure of failures) {
-        ctx.ui.notify(`  ${failure}`, "warning");
-      }
-      if (useJev) {
-        for (const note of notes) {
-          ctx.ui.notify(`${note}`, "info");
-        }
-      }
+      for (const failure of failures) report.push(`  ${failure}`);
+      if (useJev) for (const note of notes) report.push(note);
+      ctx.ui.notify(report.join("\n"), failures.length > 0 ? "warning" : "info");
     },
   });
 }
