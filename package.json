@@ -1,6 +1,6 @@
 {
   "name": "pi-jev-task-router",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Per-prompt model routing for the Pi coding agent: classify each prompt with Jev (TypeSafe System One), map it to a model tier, and switch models before the turn runs.",
   "keywords": [
     "pi-package",

@@ -6,7 +6,7 @@
 
 Classify the prompt → pick a model tier → `pi.setModel()` → tell you where it landed.
 
-Package `pi-jev-task-router` — `pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.1`
+Package `pi-jev-task-router` — `pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.2`
 
 [![Pi extension](https://img.shields.io/badge/Pi-extension-6E56CF?style=flat-square)](https://github.com/earendil-works/pi-coding-agent)
 ![routing pattern B](https://img.shields.io/badge/routing-pattern_B-0EA5E9?style=flat-square)
@@ -117,7 +117,7 @@ ordering rules. The guards, the confirmation gate and `setModel` live in `index.
 ## 🚀 Quick start
 
 ```sh
-pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.1   # 1. install
+pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.2   # 1. install
 export TYPESAFE_API_KEY=sk-...                                  # 2. optional, enables Jev
 ```
 
@@ -154,7 +154,7 @@ instead and says so in the notify. No model switch at all? Read this box first.
 ### As a Pi package (recommended)
 
 ```sh
-pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.1
+pi install git:github.com/rizafahmi/pi-jev-task-router@v0.1.2
 ```
 
 `pi install` clones the package to
