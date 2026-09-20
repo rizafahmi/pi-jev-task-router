@@ -6,7 +6,7 @@ Small, single-purpose extension. The most useful contributions are **fixtures**,
 ## Run it
 
 ```sh
-npm test          # node --test; 30 tests, no key, no network, no install needed
+npm test          # node --test; 32 tests, no key, no network, no install needed
 npm run typecheck # tsc --noEmit (typescript is a devDependency)
 ```
 
@@ -90,7 +90,9 @@ The heuristic is deterministic, so a mismatch is a real regression and fails. Un
 notes, because a judgement model is allowed to disagree about *how* to describe a task.
 
 If you add or rename a tier expectation, keep the counts in the README honest — it states the
-fixture histogram, and it is checked by hand, not by CI.
+fixture histogram, and it is checked by hand, not by CI. That goes for the **test count** in the
+README and the header comment above as well: nothing fails when it goes stale, it just quietly
+misleads. `node --test` prints the real number.
 
 ## Notes on the Pi extension API
 

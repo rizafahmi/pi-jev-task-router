@@ -1,5 +1,8 @@
 /**
- * task-router — pattern B.
+ * task-router — per-prompt model routing.
+ *
+ * While the router is on it owns the active model: it re-decides on every prompt, so a
+ * manual /model choice lasts only until the next one. /task-router off opts out.
  *
  * On every user prompt, before the agent loop runs:
  *   classify (Jev, or the heuristic fallback) -> applyPolicy -> resolveTierModel
