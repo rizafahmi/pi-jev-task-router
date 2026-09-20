@@ -25,6 +25,14 @@
       "./index.ts"
     ]
   },
+  "files": [
+    "index.ts",
+    "policy.ts",
+    "schema.ts",
+    "providers/",
+    "fixtures.jsonl",
+    "policy.test.ts"
+  ],
   "scripts": {
     "test": "node --test",
     "typecheck": "tsc --noEmit"

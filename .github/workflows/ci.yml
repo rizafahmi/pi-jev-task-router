@@ -55,3 +55,10 @@ jobs:
         env:
           PI_TELEMETRY: "0"
         run: scripts/vanilla-check.sh --local
+
+      # The git clone and the npm tarball are different artifacts: `files` decides what npm
+      # users get, and dropping a runtime file from it breaks only them. Checked separately.
+      - name: Assert the npm tarball is complete, and carries no dev files
+        env:
+          PI_TELEMETRY: "0"
+        run: scripts/vanilla-check.sh --tarball

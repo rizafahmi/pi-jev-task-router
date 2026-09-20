@@ -19,6 +19,12 @@
 #                        tree. This is what CI runs on a tag push, so it proves the clone
 #                        path and that the tag points where you think it does.
 #
+#   --tarball            Pack the working tree with `npm pack` and install the packed content.
+#                        The `files` allowlist decides what npm users get, and dropping a
+#                        runtime file from it breaks only them — a missing providers/*.ts
+#                        fails to load, and a missing fixtures.jsonl breaks /router-check
+#                        alone. Also asserts the dev files stay out of the tarball.
+#
 # The router's own env vars are scrubbed in both modes unless you ask for them, because a
 # TYPESAFE_API_KEY exported in your shell would otherwise silently switch the run from the
 # heuristic path to Jev.
@@ -28,6 +34,7 @@
 #   scripts/vanilla-check.sh --local             # fast loop, working tree
 #   scripts/vanilla-check.sh --ref v0.1.0        # some other tag/branch/commit
 #   scripts/vanilla-check.sh --local --from-git --expect-commit "$SHA"
+#   scripts/vanilla-check.sh --tarball           # what npm users would install
 #   scripts/vanilla-check.sh --with-key          # pass TYPESAFE_API_KEY through
 #   scripts/vanilla-check.sh --auth              # mount ~/.pi/agent/auth.json into the container
 #   scripts/vanilla-check.sh --shell             # checks pass, then leave a container running to poke at
@@ -39,6 +46,7 @@ cd "$REPO"
 
 MODE="container"
 FROM_GIT=0
+TARBALL=0
 REF=""
 PI_VERSION=""
 EXPECT_COMMIT="${EXPECT_COMMIT:-}"
@@ -56,6 +64,7 @@ while [ $# -gt 0 ]; do
 		--local) MODE="local" ;;
 		--container) MODE="container" ;;
 		--from-git) FROM_GIT=1 ;;
+		--tarball) MODE="local"; TARBALL=1 ;;
 		--ref) REF="${2:?--ref needs a value}"; shift ;;
 		--pi-version) PI_VERSION="${2:?--pi-version needs a value}"; shift ;;
 		--expect-commit) EXPECT_COMMIT="${2:?--expect-commit needs a value}"; shift ;;
@@ -91,6 +100,7 @@ banner() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
 # Local-path mode never installs from git, so name the source accordingly.
 DISPLAY_SOURCE="$SOURCE"
 if [ "$MODE" = "local" ] && [ "$FROM_GIT" = 0 ]; then DISPLAY_SOURCE="working tree ($REPO)"; fi
+if [ "$TARBALL" = 1 ]; then DISPLAY_SOURCE="npm tarball packed from the working tree"; fi
 
 banner "vanilla-check · mode=$MODE · pi=$PI_VERSION · source=$DISPLAY_SOURCE"
 if [ -n "$EXPECT_COMMIT" ]; then echo "  note: expecting the clone at $EXPECT_COMMIT"; fi
@@ -228,7 +238,9 @@ exec bash"
 # local
 # ---------------------------------------------------------------------------
 AGENT_DIR=""
-cleanup_agent_dir() {
+PACK_DIR=""
+cleanup_all() {
+	if [ -n "$PACK_DIR" ]; then rm -rf "$PACK_DIR"; fi
 	[ -n "$AGENT_DIR" ] || return 0
 	if [ "$KEEP" = 1 ]; then
 		printf '  agent dir kept: %s\n' "$AGENT_DIR"
@@ -237,14 +249,30 @@ cleanup_agent_dir() {
 	rm -rf "$AGENT_DIR"
 }
 
+# Pack exactly what npm publish would send, then unpack it. Installing from the unpacked
+# directory tests the same file set that reaches npm users.
+pack_tarball() {
+	PACK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pi-tarball.XXXXXX")"
+	npm pack --pack-destination "$PACK_DIR" >/dev/null
+	tar xzf "$PACK_DIR"/pi-jev-task-router-*.tgz -C "$PACK_DIR"
+	printf '%s' "$PACK_DIR/package"
+}
+
 run_local() {
 	command -v pi >/dev/null 2>&1 || { echo "pi is not on PATH — npm i -g @earendil-works/pi-coding-agent" >&2; exit 2; }
 
 	AGENT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pi-vanilla.XXXXXX")"
-	trap cleanup_agent_dir EXIT
+	trap cleanup_all EXIT
 
 	local source
-	if [ "$FROM_GIT" = 1 ]; then source="$SOURCE"; else source="${LOCAL_SOURCE:-$REPO}"; fi
+	if [ "$TARBALL" = 1 ]; then
+		source="$(pack_tarball)"
+		echo "-- packed artifact: $source"
+	elif [ "$FROM_GIT" = 1 ]; then
+		source="$SOURCE"
+	else
+		source="${LOCAL_SOURCE:-$REPO}"
+	fi
 
 	echo "-- pi install $source"
 	PI_CODING_AGENT_DIR="$AGENT_DIR" "${scrub[@]}" pi install "$source"
@@ -255,6 +283,32 @@ run_local() {
 	echo
 
 	verify_common "$AGENT_DIR" "$(derive_clone_path "$AGENT_DIR" "$source")"
+
+	if [ "$TARBALL" = 1 ]; then
+		echo
+		echo "-- the packed file set"
+
+		# Dev files must not ship. PLAN.md was published in 0.1.0 because there was no
+		# `files` allowlist and npm falls back to .gitignore, which does not exclude it.
+		for leaked in PLAN.md plans scripts .github tsconfig.json; do
+			if [ -e "$source/$leaked" ]; then
+				echo "FAILED: $leaked is in the npm tarball — tighten the files allowlist" >&2
+				exit 1
+			fi
+		done
+		echo "  no dev files (PLAN.md, plans/, scripts/, .github/, tsconfig.json)"
+
+		# check-commands catches a missing providers/*.ts or policy.ts (the extension would
+		# not load), but not this: fixtures.jsonl is read only when /router-check runs.
+		if [ ! -f "$source/fixtures.jsonl" ]; then
+			echo "FAILED: fixtures.jsonl is not in the npm tarball — /router-check would fail for npm users" >&2
+			exit 1
+		fi
+		printf '  fixtures.jsonl present (%s fixtures)\n' "$(wc -l < "$source/fixtures.jsonl" | tr -d ' ')"
+
+		echo "  node --test from the packed content"
+		( cd "$source" && node --test 2>&1 | grep -E '^ℹ (tests|pass|fail)' | sed 's/^/  /' )
+	fi
 
 	echo
 	echo "  note: this mode still reads skills from $HOME/.agents/skills and $HOME/.pi/agent/skills."

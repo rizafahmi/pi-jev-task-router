@@ -35,6 +35,20 @@ jobs:
           echo "installing pi $version"
           npm install -g "@earendil-works/pi-coding-agent@$version"
 
+      # Catches tagging without bumping, or bumping without tagging: either way the release
+      # would claim a version the code does not carry, and npm would publish under the wrong
+      # number.
+      - name: The tag must match the version in package.json
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "v$version" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version $version" >&2
+            exit 1
+          fi
+          echo "tag ${GITHUB_REF_NAME} matches package.json"
+
       - name: Install from GitHub at the pushed ref and assert the clone matches it
         env:
           PI_TELEMETRY: "0"

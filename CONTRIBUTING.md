@@ -23,6 +23,7 @@ router that never registers. `scripts/vanilla-check.sh` covers that:
 ```sh
 scripts/vanilla-check.sh --local   # seconds: your pi, but an empty agent dir, working tree
 scripts/vanilla-check.sh           # minutes: stock node:24 container, clone from GitHub at the tag
+scripts/vanilla-check.sh --tarball # what npm users get, not what the clone has
 scripts/vanilla-check.sh --shell   # same container, then a shell so you can drive /router-check by hand
 ```
 
@@ -33,6 +34,14 @@ not reject the collision — `resolveRegisteredCommands()` renames them to `/rou
 `/router:2`, the plain `/router` disappears, and your prompt gets routed twice per turn with
 no error anywhere. Note that pi *does* dedupe two records resolving to the same path, so the
 duplicate has to be a genuinely separate copy of the file to reproduce.
+
+`--tarball` exists because the git clone and the npm tarball are different artifacts. `files`
+in `package.json` decides what npm users get, and without it npm falls back to `.gitignore` —
+which is how `PLAN.md` ended up in the published 0.1.0. **Add every runtime file to `files`.**
+The failure mode is lopsided: a missing `providers/*.ts` or `policy.ts` stops the extension
+loading, so the usual checks catch it, but `fixtures.jsonl` is read only when `/router-check`
+runs, so only `--tarball` catches that one. `tsconfig.json`, the tests and `scripts/` are
+dev-only and stay out of the allowlist.
 
 Both modes scrub `TYPESAFE_API_KEY` and the `TASK_ROUTER_*` vars unless you pass `--with-key`,
 because a key exported in your shell silently moves the run from the heuristic path to Jev.

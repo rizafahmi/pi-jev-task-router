@@ -624,7 +624,8 @@ task-router/                    (installed as pi-jev-task-router)
   LICENSE                       MIT
   .gitignore
   scripts/
-    vanilla-check.sh            install this like a stranger would, then assert it loaded once
+    vanilla-check.sh            install like a stranger would, then assert it loaded once
+                                --local, container, --from-git, --tarball, --shell
     check-commands.mjs          RPC assertion: the four commands, once each, origin=package
   .github/
     workflows/ci.yml            node --test + tsc --noEmit, plus a package-load check
