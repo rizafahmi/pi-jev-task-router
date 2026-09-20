@@ -623,8 +623,12 @@ task-router/                    (installed as pi-jev-task-router)
   CONTRIBUTING.md               dev loop, where the knobs are, notes on the Pi extension API
   LICENSE                       MIT
   .gitignore
+  scripts/
+    vanilla-check.sh            install this like a stranger would, then assert it loaded once
+    check-commands.mjs          RPC assertion: the four commands, once each, origin=package
   .github/
-    workflows/ci.yml            node --test + tsc --noEmit on Node 24
+    workflows/ci.yml            node --test + tsc --noEmit, plus a package-load check
+    workflows/package-check.yml on a tag push: install git:…@tag and verify the clone
     ISSUE_TEMPLATE/bug_report.md
   providers/
     types.ts                    ClassifierProvider seam

@@ -30,3 +30,28 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+  # Compiling is not the same contract as *loading as a package*: pi resolves the extension
+  # through the `pi` manifest, so a package whose manifest points at the wrong file passes
+  # every test above and installs to a router that never registers. And if two copies of the
+  # extension load, pi silently renames the collision to `/router:1` and `/router:2` rather
+  # than failing. Both are checked here, against an otherwise empty agent dir.
+  package-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Install pi at the version this package targets
+        run: |
+          version="$(node -p "require('./package.json').devDependencies['@earendil-works/pi-coding-agent'].replace(/^[\^~]/,'')")"
+          echo "installing pi $version"
+          npm install -g "@earendil-works/pi-coding-agent@$version"
+
+      - name: Install into an empty agent dir and assert it registers once
+        env:
+          PI_TELEMETRY: "0"
+        run: scripts/vanilla-check.sh --local

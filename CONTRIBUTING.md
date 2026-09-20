@@ -6,13 +6,38 @@ Small, single-purpose extension. The most useful contributions are **fixtures**,
 ## Run it
 
 ```sh
-npm test          # node --test; 23 tests, no key, no network, no install needed
+npm test          # node --test; 30 tests, no key, no network, no install needed
 npm run typecheck # tsc --noEmit (typescript is a devDependency)
 ```
 
 Both run in CI on Node 24 (`.github/workflows/ci.yml`). Tests execute `.ts` directly via
 Node's type stripping, so there is no build step and no toolchain to install — `npm ci` is
 only needed for the typecheck.
+
+### Selling yourself the install
+
+`npm test` proves the code works. It does not prove the *package* loads — pi resolves the
+extension through the `pi` manifest, and a manifest pointing at the wrong file installs to a
+router that never registers. `scripts/vanilla-check.sh` covers that:
+
+```sh
+scripts/vanilla-check.sh --local   # seconds: your pi, but an empty agent dir, working tree
+scripts/vanilla-check.sh           # minutes: stock node:24 container, clone from GitHub at the tag
+scripts/vanilla-check.sh --shell   # same container, then a shell so you can drive /router-check by hand
+```
+
+It installs the package, then asserts via `pi --mode rpc` that `/router`, `/router-config`,
+`/task-router` and `/router-check` are each registered exactly once and report
+`origin: package`. Two copies loading is the failure worth guarding against, because pi does
+not reject the collision — `resolveRegisteredCommands()` renames them to `/router:1` and
+`/router:2`, the plain `/router` disappears, and your prompt gets routed twice per turn with
+no error anywhere. Note that pi *does* dedupe two records resolving to the same path, so the
+duplicate has to be a genuinely separate copy of the file to reproduce.
+
+Both modes scrub `TYPESAFE_API_KEY` and the `TASK_ROUTER_*` vars unless you pass `--with-key`,
+because a key exported in your shell silently moves the run from the heuristic path to Jev.
+`--local` isolates packages and auth but **not** skills, which still load from
+`~/.agents/skills` and `~/.pi/agent/skills`; the container loads none of your machine.
 
 To exercise it by hand, clone into the directory Pi auto-discovers and reload:
 
@@ -107,3 +132,39 @@ Things that cost time to rediscover. Verified against `@earendil-works/pi-coding
   Say which key or env var is wrong and what a valid value looks like.
 - Add a test for any change to `applyPolicy`, `parseTierModels`, price ordering, or the Jev
   response mapping. Those are the parts that can quietly route badly.
+
+## Releasing
+
+A tag is what users pin, so it has to point at the commit that was tested, and the install
+line in the README has to name that tag.
+
+```sh
+# 1. version and the README install line, together
+npm version patch --no-git-tag-version   # or edit package.json by hand
+#    then update every `pi install git:…@vX.Y.Z` in README.md
+#    and the pi-coding-agent badge if the target version moved
+
+# 2. prove it before tagging, then tag the commit you proved
+npm test && npm run typecheck
+scripts/vanilla-check.sh --local
+git commit -am "chore: release vX.Y.Z"
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin main --follow-tags
+```
+
+Pushing the tag triggers `.github/workflows/package-check.yml`, which installs
+`git:github.com/rizafahmi/pi-jev-task-router@vX.Y.Z` from GitHub and fails if the clone's
+`HEAD` is not the commit the tag was pushed from. That is the check that catches a tag
+pushed before the fix, or a retag done in a hurry — your local checkout looks fine either way.
+
+Practical notes:
+
+- Retagging a pushed tag is a force-push and breaks anyone who already pinned it. Prefer
+  `vX.Y.Z+1`. If a tag is genuinely wrong and unpublished, delete it before it is announced.
+- `pi update --extensions` reconciles an existing clone to the ref in settings, but it does
+  **not** move a pinned `@ref` forward. Users get a new version by running
+  `pi install git:…@vX.Y.Z` again, which rewrites the pinned ref. Say so in release notes.
+- `TASK_ROUTER_TIERS` and the tier table are the parts users hit first on a fresh machine,
+  where no `models.json` or auth exists. If a release changes tier defaults, run
+  `scripts/vanilla-check.sh --shell` and confirm `/router-config` resolves rather than
+  reporting a misconfigured tier table.

@@ -1,0 +1,51 @@
+name: Package check
+
+# Runs only on a tag push, because it is the one check that needs the tag to exist on
+# GitHub. It installs the published ref the way a user would — `pi install git:…@tag` — and
+# asserts that the tag points at the commit being released, that the clone lands where the
+# README says it does, and that the extension registers its commands exactly once.
+#
+# This is what catches a release where the tag was pushed before the fix, or where someone
+# retagged in a hurry: the local checkout would still look correct.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag or ref to install (defaults to the checked-out ref)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  install-from-git:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Install pi at the version this package targets
+        run: |
+          version="$(node -p "require('./package.json').devDependencies['@earendil-works/pi-coding-agent'].replace(/^[\^~]/,'')")"
+          echo "installing pi $version"
+          npm install -g "@earendil-works/pi-coding-agent@$version"
+
+      - name: Install from GitHub at the pushed ref and assert the clone matches it
+        env:
+          PI_TELEMETRY: "0"
+          REF: ${{ github.event.inputs.ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            # On a tag push the checkout is the tag, so HEAD is the commit the tag must
+            # resolve to. Asserting it turns "the tag points somewhere unexpected" into a
+            # red build instead of a user's bug report.
+            scripts/vanilla-check.sh --local --from-git --ref "$REF" --expect-commit "$(git rev-parse HEAD)"
+          else
+            scripts/vanilla-check.sh --local --from-git --ref "$REF"
+          fi
