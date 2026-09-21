@@ -4,7 +4,7 @@ Pure offline verification: Node's built-in test runner against policy + classifi
 
 ## Sub-features
 
-- `unit-tests` — `node --experimental-strip-types --test` runs 30 tests (policy.test.ts, jev.test.ts) with canned responses
+- `unit-tests` — `node --experimental-strip-types --test` runs 32 tests (policy.test.ts, jev.test.ts) with canned responses
 - `typecheck` — `tsc --noEmit` proves type correctness (needs devDeps installed)
 - `fixture-parse` — `fixtures.jsonl` is valid JSON lines with expected schema
 
@@ -22,9 +22,9 @@ Preconditions:
 - Node ≥22.19 on PATH
 - No Pi instance required, no network required
 
-- **Run tests directly.** Execute Node's test runner. Run `cd /workspace && node --experimental-strip-types --test`. Expect exit code 0, output shows 30 tests passed across `policy.test.ts` and `providers/jev.test.ts`.
+- **Run tests directly.** Execute Node's test runner. Run `cd /workspace && node --experimental-strip-types --test`. Expect exit code 0, output shows 32 tests passed across `policy.test.ts` and `providers/jev.test.ts`.
 - **Run typecheck directly.** Execute tsc. Run `cd /workspace && npm install && npm run typecheck`. Expect exit code 0, no type errors reported. The `npm install` step is needed once to populate `node_modules/` with `typescript`, `@types/node`, and Pi types (all devDependencies).
-- **Run doctor wrapper.** Execute control script. Run `.cursor/skills/verify-pi-jev-task-router/helpers/control-pi-jev-task-router.mjs doctor`. Expect exit code 0, output shows "=== Running tests ===" section with 30 passed, "=== Running typecheck ===" section with no errors, "=== Checking fixtures ===" section confirming 17 lines parsed. If `node_modules/` is missing, the script runs `npm ci` automatically.
+- **Run doctor wrapper.** Execute control script. Run `.cursor/skills/verify-pi-jev-task-router/helpers/control-pi-jev-task-router.mjs doctor`. Expect exit code 0, output shows "=== Running tests (node --test) ===" section with 32 passed, "=== Running typecheck (tsc --noEmit) ===" section with no errors, "=== Checking fixtures with heuristic (offline) ===" section confirming 17 lines parsed. If `node_modules/` is missing, the script runs `npm ci` automatically.
 - **Inspect fixture schema.** Parse fixtures.jsonl. Run `cd /workspace && head -3 fixtures.jsonl | jq -c '.'`. Each line is a JSON object with `prompt`, `expect_kind`, `expect_complexity`, `expect_tier`, `note` fields.
 - **Proof.** Capture doctor run output. Run `.cursor/skills/verify-pi-jev-task-router/helpers/control-pi-jev-task-router.mjs doctor > .cursor/skills/verify-pi-jev-task-router/evidence/offline-path/doctor-output.txt`. File shows all checks passed with exit 0.
 

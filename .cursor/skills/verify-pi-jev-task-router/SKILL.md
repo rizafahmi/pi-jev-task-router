@@ -23,7 +23,7 @@ No Pi instance needed. Proves tests + typecheck + fixture parsing:
 
 ```bash
 cd /workspace
-node --experimental-strip-types --test   # 30 tests, no key/network
+node --experimental-strip-types --test   # 32 tests, no key/network
 npm run typecheck                        # requires npm install for devDeps
 ```
 
@@ -62,7 +62,7 @@ The doctor check proves the offline path is healthy. Run before driving any feat
 
 **What it checks:**
 
-1. `node --experimental-strip-types --test` passes (30 tests: policy, Jev response mapping, tier resolution, fixture parsing)
+1. `node --experimental-strip-types --test` passes (32 tests: policy, Jev response mapping, tier resolution, fixture parsing)
 2. `npm run typecheck` passes (runs `tsc --noEmit`; installs devDeps if needed)
 3. `fixtures.jsonl` parses as valid JSON lines
 

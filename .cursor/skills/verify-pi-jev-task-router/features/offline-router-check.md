@@ -6,7 +6,7 @@ Run `fixtures.jsonl` through the heuristic classifier and policy, offline. No AP
 
 - `fixture-run-heuristic` — `/router-check` processes 17 fixtures through fake provider
 - `tier-assertions` — Each fixture's expected tier is validated against policy output
-- `kind-complexity-summary` — Disagreements between expected and actual kind/complexity are reported
+- `pass-fail-summary` — Output shows pass count and failure details (successful matches are not listed individually)
 
 ## How to get to it (user POV)
 
@@ -23,14 +23,14 @@ Preconditions:
 - No `TYPESAFE_API_KEY` needed (heuristic path is classifier-agnostic)
 
 - **Launch Pi.** Start Pi TUI. Run `pi` with no args. Expect Pi prompt appears, extension loads (session_start may say "classifier: fake (heuristic)").
-- **Run offline router-check.** Send slash command. Inside Pi TUI, type `/router-check` and press Enter. Expect output shows "17 fixtures processed", a table or list with prompt excerpts, expected vs actual kind/complexity/tier, and a summary line like "tier matches: 17/17" or similar. No network activity (heuristic runs locally).
+- **Run offline router-check.** Send slash command. Inside Pi TUI, type `/router-check --fake` and press Enter. Expect output shows a summary line like "router-check: 17/17 fixtures passed via heuristic (forced by --fake) in Xs" (info level when all pass). If any fixture fails, expect warning level notify with the summary plus failure lines showing prompt excerpt and expected vs actual values. No network activity (heuristic runs locally).
 - **Inspect one fixture.** Confirm heuristic logic. Run `cd /workspace && grep -m1 'XSS' fixtures.jsonl`. The prompt "Fix the XSS in the comment form" expects security/L/frontier. The heuristic (providers/fake.ts) matches "XSS" as a security keyword, so expect_tier=frontier should match actual tier.
-- **Proof.** Capture `/router-check` output. Inside Pi TUI after running `/router-check`, the output is displayed in the terminal. Copy the full output to `.cursor/skills/verify-pi-jev-task-router/evidence/slash-commands/router-check.txt`. The file shows all 17 fixtures processed, tier match count, and no errors.
+- **Proof.** Capture `/router-check` output. Inside Pi TUI after running `/router-check --fake`, the output is displayed in the terminal. Copy the full output to `.cursor/skills/verify-pi-jev-task-router/evidence/slash-commands/router-check.txt`. The file shows the pass/fail summary, any failure details, and no errors.
 
 ## Gotchas
 
 - `/router-check` requires Pi TUI; there is no standalone CLI for it. The offline path without Pi is limited to reading `fixtures.jsonl` and inspecting `providers/fake.ts` source.
 - The heuristic is intentionally biased toward security: "login", "XSS", "IDOR", "SQL injection" all trigger security/frontier. Over-triggering security is the safe direction.
-- Fixture expectations were written against the heuristic and policy as of one snapshot. If the heuristic changes, tier mismatches in `/router-check` output are notes, not failures (the command still completes successfully).
-- `/router-check --fake` forces the heuristic even when `TYPESAFE_API_KEY` is set. Without `--fake` or `--jev`, the command uses the configured classifier (auto/jev/fake from `TASK_ROUTER_PROVIDER`).
+- Use `/router-check --fake` to force the heuristic classifier even when `TYPESAFE_API_KEY` is set. Without `--fake` or `--jev`, the command uses the configured classifier selection (which may be live Jev if a key is present).
+- Offline mode treats any kind/complexity/tier mismatch as a failure and includes it in the failure output. Kind/complexity disagreements with live Jev (via `/router-check --jev`) are reported as soft notes, not failures, since Jev's classifier may differ from fixture expectations written against the heuristic.
 - The 17 fixtures cover: 5 fast_cheap, 4 balanced, 4 frontier, 4 ask_human. Security prompts (4) always route to frontier; unclear prompts (4) route to ask_human (no model switch, warning notify).

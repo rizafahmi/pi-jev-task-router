@@ -49,7 +49,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 ## Features
 
-- [Pure unit and typecheck](./pure-unit-and-typecheck.md) covers `node --test` (23 tests) and `npm run typecheck` (offline, no Pi).
+- [Pure unit and typecheck](./pure-unit-and-typecheck.md) covers `node --test` (32 tests) and `npm run typecheck` (offline, no Pi).
 - [Offline router-check](./offline-router-check.md) covers `/router-check` with fixtures and heuristic (no API key).
 - [Slash commands](./slash-commands.md) covers `/router-config`, `/router`, `/task-router on|off` in the Pi TUI.
 - [Policy routing tiers](./policy-routing-tiers.md) covers kind→tier mapping, security→frontier escalation, and ask_human veto.
