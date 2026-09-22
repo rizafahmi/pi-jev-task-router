@@ -184,7 +184,7 @@ Artifacts go under `.cursor/skills/verify-pi-jev-task-router/evidence/`. Organiz
 
 **Proof standards:**
 
-- Offline path: doctor passes, all 23 tests green, typecheck clean, fixtures parse
+- Offline path: doctor passes, all 32 tests green, typecheck clean, fixtures parse
 - Slash commands: each command returns expected structure (no errors, recognizable output shape)
 - Routing: prompt → notify + footer change → `/router` confirms decision
 - Live Jev: `/router-check --jev` completes, tier match count reported, security prompt routes to frontier
