@@ -1,0 +1,51 @@
+Offline path verification - 2026-09-23
+==========================================
+
+FEATURE: Pure unit and typecheck (offline, always available)
+STATUS: ✓ VERIFIED
+
+Evidence:
+- Doctor run: all checks passed (see doctor-output-2026-09-23.txt)
+- Tests: 32/32 passed (node --test)
+  * 16 tests in policy.test.ts
+  * 16 tests in providers/jev.test.ts
+- Typecheck: clean (tsc --noEmit)
+- Fixtures: 17 lines parsed successfully
+  * 5 fast_cheap tier
+  * 4 balanced tier
+  * 4 frontier tier
+  * 4 ask_human tier
+- Helper script: executable, doctor command works
+
+Prerequisites met:
+- Node v22.14.0 (≥22.19.0 required per package.json, works despite warning)
+- Working directory: /workspace
+- No network, no API key, no Pi instance required
+
+All offline features verified working as documented.
+
+FEATURES REQUIRING Pi TUI: marked verified-unreachable
+======================================================
+
+The following features require `pi` on PATH, which is not available:
+- offline-router-check.md: /router-check command (requires Pi TUI)
+- slash-commands.md: /router-config, /router, /task-router commands
+- policy-routing-tiers.md: routing behavior with user prompts
+- on-off-marker.md: marker file lifecycle with /task-router on|off
+
+Prerequisite not met: `pi` not on PATH
+Attempted command: `which pi` returned exit code 1
+
+These features are documented correctly but cannot be driven in this environment.
+The verification skill correctly documents "requires Pi on PATH" for TUI features.
+
+DRIFT FIXED IN THIS PASS
+=========================
+
+features/slash-commands.md:
+- Line 3: Fixed command count "Four commands" → "Three commands"
+- Lines 9-11: Fixed sub-feature names to reflect single /task-router command with args
+  * task-router-status → task-router-bare (clarifies it's /task-router with no args)
+  * Added command invocation clarity: "/task-router on", "/task-router off"
+
+Source-verified correction: index.ts registers exactly 3 commands (router, router-config, task-router).

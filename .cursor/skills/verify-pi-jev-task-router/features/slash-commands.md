@@ -1,14 +1,14 @@
 # Slash commands
 
-Pi TUI slash commands for inspecting router state, toggling routing, and viewing the last decision. Four commands: `/router-config`, `/router`, `/task-router on|off`, and `/task-router` (bare, shows state).
+Pi TUI slash commands for inspecting router state, toggling routing, and viewing the last decision. Three commands: `/router-config`, `/router`, and `/task-router` (accepts `on`, `off`, or bare to show state).
 
 ## Sub-features
 
 - `router-config` — Shows active classifier, masked key, thresholds, tier table, resolved models
 - `router` — Shows the last routing decision (prompt, kind, tier, confidence, outcome)
-- `task-router-on` — Enables routing, clears disabled marker, resets confirm gate
-- `task-router-off` — Disables routing, writes marker file, model stays wherever user leaves it
-- `task-router-status` — Shows whether routing is enabled and with which classifier
+- `task-router-on` — `/task-router on` enables routing, clears disabled marker, resets confirm gate
+- `task-router-off` — `/task-router off` disables routing, writes marker file, model stays wherever user leaves it
+- `task-router-bare` — `/task-router` (no args) shows whether routing is enabled and with which classifier
 
 ## How to get to it (user POV)
 
