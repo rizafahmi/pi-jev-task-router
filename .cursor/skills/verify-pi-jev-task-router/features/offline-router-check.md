@@ -4,13 +4,13 @@ Run `fixtures.jsonl` through the heuristic classifier and policy, offline. No AP
 
 ## Sub-features
 
-- `fixture-run-heuristic` — `/router-check` processes 17 fixtures through fake provider
+- `fixture-run-heuristic` — `/router-check --fake` processes 17 fixtures through the keyword-based heuristic (forced offline)
 - `tier-assertions` — Each fixture's expected tier is validated against policy output
 - `pass-fail-summary` — Output shows pass count and failure details (successful matches are not listed individually)
 
 ## How to get to it (user POV)
 
-- Inside Pi TUI: send `/router-check` (no flags)
+- Inside Pi TUI: send `/router-check --fake` (forces heuristic classifier)
 - From terminal: read fixtures.jsonl and manually verify heuristic logic in `providers/fake.ts`
 
 ## Driving it with the control script and Pi TUI
