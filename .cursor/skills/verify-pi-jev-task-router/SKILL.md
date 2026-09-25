@@ -10,7 +10,7 @@ This skill drives `pi-jev-task-router`, a Pi coding-agent extension that classif
 ## Surface
 
 - **Primary:** Pi TUI slash commands (`/router-config`, `/router-check`, `/router`, `/task-router on|off`)
-- **Secondary:** Offline verification via `node --test` (23 pure unit tests), `npm run typecheck`, and fixture validation
+- **Secondary:** Offline verification via `node --test` (32 pure unit tests), `npm run typecheck`, and fixture validation
 - **NOT a web UI:** This is a library + TUI extension, no HTTP server, no browser automation
 
 ## Launch
@@ -184,7 +184,7 @@ Artifacts go under `.cursor/skills/verify-pi-jev-task-router/evidence/`. Organiz
 
 **Proof standards:**
 
-- Offline path: doctor passes, all 23 tests green, typecheck clean, fixtures parse
+- Offline path: doctor passes, all 32 tests green, typecheck clean, fixtures parse
 - Slash commands: each command returns expected structure (no errors, recognizable output shape)
 - Routing: prompt → notify + footer change → `/router` confirms decision
 - Live Jev: `/router-check --jev` completes, tier match count reported, security prompt routes to frontier

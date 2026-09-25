@@ -1,14 +1,14 @@
 # Slash commands
 
-Pi TUI slash commands for inspecting router state, toggling routing, and viewing the last decision. Four commands: `/router-config`, `/router`, `/task-router on|off`, and `/task-router` (bare, shows state).
+Pi TUI slash commands for inspecting router state, toggling routing, and viewing the last decision. Three commands: `/router-config`, `/router`, and `/task-router` (accepts `on`, `off`, or bare to show state).
 
 ## Sub-features
 
 - `router-config` — Shows active classifier, masked key, thresholds, tier table, resolved models
 - `router` — Shows the last routing decision (prompt, kind, tier, confidence, outcome)
-- `task-router-on` — Enables routing, clears disabled marker, resets confirm gate
-- `task-router-off` — Disables routing, writes marker file, model stays wherever user leaves it
-- `task-router-status` — Shows whether routing is enabled and with which classifier
+- `task-router-on` — `/task-router on` enables routing, clears disabled marker, resets confirm gate
+- `task-router-off` — `/task-router off` disables routing, writes marker file, model stays wherever user leaves it
+- `task-router-bare` — `/task-router` (no args) shows whether routing is enabled and with which classifier
 
 ## How to get to it (user POV)
 
@@ -25,8 +25,8 @@ Preconditions:
 - No `TYPESAFE_API_KEY` needed for this feature (heuristic classifier is sufficient)
 
 - **Launch Pi.** Start Pi TUI. Run `pi` with no args. Expect Pi prompt appears, extension loads.
-- **Show config.** Send `/router-config`. Inside Pi TUI, type `/router-config` and press Enter. Expect output shows: `router: classifier = heuristic (TYPESAFE_API_KEY is unset)` or `jev ...` if key is set, `TYPESAFE_API_KEY unset` or masked (e.g. `set (sk-***...)`), base URL, model name, confidence/unsure floors, confirm gate status, marker path + enabled/disabled state, tier table label, resolved models per tier (fast_cheap=..., balanced=..., frontier=...), and allowlists. No errors.
-- **Check status.** Send `/task-router`. Inside Pi TUI, type `/task-router` and press Enter. Expect output shows `task-router is enabled (via heuristic)` or `enabled (via jev ...)` or `disabled - ...` with reason.
+- **Show config.** Send `/router-config`. Inside Pi TUI, type `/router-config` and press Enter. Expect output shows: `router: classifier = heuristic (TYPESAFE_API_KEY is unset)` or `jev ...` if key is set, `TYPESAFE_API_KEY unset` or masked (e.g. `set (sk-1234...9876)` showing first 4 and last 4 chars), base URL, model name, confidence/unsure floors, confirm gate status, marker path + enabled/disabled state, tier table label, resolved models per tier (fast_cheap=..., balanced=..., frontier=...), and allowlists. No errors.
+- **Check status.** Send `/task-router`. Inside Pi TUI, type `/task-router` and press Enter. Expect output shows `task-router is enabled (heuristic (TYPESAFE_API_KEY is unset))` or `enabled (jev-1.13.0)` if key is set, or `disabled - ...` with reason.
 - **Disable routing.** Send `/task-router off`. Inside Pi TUI, type `/task-router off` and press Enter. Expect notify: `task-router disabled - model will stay wherever you leave it` (warning level). The marker file `~/.pi/agent/pi-jev-task-router.disabled` is written.
 - **Confirm disabled state.** Send `/task-router` again. Expect output shows `task-router is disabled - /task-router on to enable`.
 - **Re-enable routing.** Send `/task-router on`. Inside Pi TUI, type `/task-router on` and press Enter. Expect notify: `task-router enabled` (info level). The marker file is deleted, confirm gate "always allow" flag is reset.
