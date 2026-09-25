@@ -1,0 +1,192 @@
+Running doctor checks for pi-jev-task-router...
+
+=== Running tests (node --test) ===
+TAP version 13
+# (node:2679) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: a known upgrade asks for confirmation
+ok 1 - a known upgrade asks for confirmation
+  ---
+  duration_ms: 0.904763
+  ...
+# Subtest: a known downgrade does not ask
+ok 2 - a known downgrade does not ask
+  ---
+  duration_ms: 0.124126
+  ...
+# Subtest: a no-op switch never asks
+ok 3 - a no-op switch never asks
+  ---
+  duration_ms: 0.116935
+  ...
+# Subtest: an unknown current model is treated as cheapest
+ok 4 - an unknown current model is treated as cheapest
+  ---
+  duration_ms: 0.146771
+  ...
+# Subtest: an unknown target model always asks (fails closed)
+ok 5 - an unknown target model always asks (fails closed)
+  ---
+  duration_ms: 0.103073
+  ...
+# Subtest: an override ranks by tier, with no second table to keep in sync
+ok 6 - an override ranks by tier, with no second table to keep in sync
+  ---
+  duration_ms: 0.490376
+  ...
+# Subtest: the same model behind a different gateway ranks the same
+ok 7 - the same model behind a different gateway ranks the same
+  ---
+  duration_ms: 0.19649
+  ...
+# Subtest: two models in the same tier are not a price step
+ok 8 - two models in the same tier are not a price step
+  ---
+  duration_ms: 0.135106
+  ...
+# Subtest: an unset or blank override keeps the shipped defaults
+ok 9 - an unset or blank override keeps the shipped defaults
+  ---
+  duration_ms: 1.675204
+  ...
+# Subtest: an omitted tier keeps its default
+ok 10 - an omitted tier keeps its default
+  ---
+  duration_ms: 0.661404
+  ...
+# Subtest: parsing an override never mutates the shipped defaults
+ok 11 - parsing an override never mutates the shipped defaults
+  ---
+  duration_ms: 0.21291
+  ...
+# Subtest: a model id may contain slashes of its own
+ok 12 - a model id may contain slashes of its own
+  ---
+  duration_ms: 0.159149
+  ...
+# Subtest: malformed overrides are rejected with one readable error
+ok 13 - malformed overrides are rejected with one readable error
+  ---
+  duration_ms: 0.197565
+  ...
+# Subtest: an unknown tier, a non-array and an empty array are rejected
+ok 14 - an unknown tier, a non-array and an empty array are rejected
+  ---
+  duration_ms: 0.085019
+  ...
+# Subtest: an entry that is not a provider/modelId pair is rejected
+ok 15 - an entry that is not a provider/modelId pair is rejected
+  ---
+  duration_ms: 0.096289
+  ...
+# Subtest: resolution uses the supplied table, not the shipped one
+ok 16 - resolution uses the supplied table, not the shipped one
+  ---
+  duration_ms: 0.150342
+  ...
+# (node:2680) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: a well-formed response yields the decision, the kind's confidence and the detail
+ok 17 - a well-formed response yields the decision, the kind's confidence and the detail
+  ---
+  duration_ms: 1.196818
+  ...
+# Subtest: a noul exactly at the threshold counts as true
+ok 18 - a noul exactly at the threshold counts as true
+  ---
+  duration_ms: 0.151366
+  ...
+# Subtest: a noul without a type field is rejected
+ok 19 - a noul without a type field is rejected
+  ---
+  duration_ms: 1.528111
+  ...
+# Subtest: a missing noul answer is rejected
+ok 20 - a missing noul answer is rejected
+  ---
+  duration_ms: 0.18224
+  ...
+# Subtest: a noul outside [0, 1] is rejected
+ok 21 - a noul outside [0, 1] is rejected
+  ---
+  duration_ms: 0.304632
+  ...
+# Subtest: an option name that is not in the question is rejected
+ok 22 - an option name that is not in the question is rejected
+  ---
+  duration_ms: 0.118245
+  ...
+# Subtest: a missing task_kind confidence becomes 0 rather than throwing
+ok 23 - a missing task_kind confidence becomes 0 rather than throwing
+  ---
+  duration_ms: 0.157203
+  ...
+# Subtest: a task_kind confidence outside [0, 1] is rejected
+ok 24 - a task_kind confidence outside [0, 1] is rejected
+  ---
+  duration_ms: 0.169387
+  ...
+# Subtest: a complexity confidence outside [0, 1] is dropped from the detail, not thrown
+ok 25 - a complexity confidence outside [0, 1] is dropped from the detail, not thrown
+  ---
+  duration_ms: 0.300236
+  ...
+# Subtest: an absent key is absent
+ok 26 - an absent key is absent
+  ---
+  duration_ms: 0.323974
+  ...
+# Subtest: a blank key counts as absent, never as present
+ok 27 - a blank key counts as absent, never as present
+  ---
+  duration_ms: 0.127721
+  ...
+# Subtest: a real key is trimmed and kept
+ok 28 - a real key is trimmed and kept
+  ---
+  duration_ms: 0.065629
+  ...
+# Subtest: 401 and 403 are auth errors
+ok 29 - 401 and 403 are auth errors
+  ---
+  duration_ms: 0.205266
+  ...
+# Subtest: a retryable status is not an auth error
+ok 30 - a retryable status is not an auth error
+  ---
+  duration_ms: 0.054522
+  ...
+# Subtest: other failures keep the status and body, and are not auth errors
+ok 31 - other failures keep the status and body, and are not auth errors
+  ---
+  duration_ms: 0.05852
+  ...
+# Subtest: isJevAuthError rejects anything that is not one
+ok 32 - isJevAuthError rejects anything that is not one
+  ---
+  duration_ms: 0.059698
+  ...
+1..32
+# tests 32
+# suites 0
+# pass 32
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 138.720718
+✓ Tests passed
+
+=== Running typecheck (tsc --noEmit) ===
+
+> pi-jev-task-router@0.1.2 typecheck
+> tsc --noEmit
+
+✓ Typecheck passed
+
+=== Checking fixtures with heuristic (offline) ===
+Found 17 fixture lines
+✓ All 17 fixtures parsed successfully
+  (Deep classifier verification requires Pi + /router-check)
+
+✓ All doctor checks passed
